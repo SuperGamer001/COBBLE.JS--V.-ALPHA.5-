@@ -8,10 +8,24 @@ export default class Cobble {
         this.isReady = false; // Set to true when Three.js is loaded
         this.plugins = {}; // Collection of plugins
         this._lastTime = 0; // For delta time calculation in the main loop
+        this._skyColor = 0x87ceeb; // Default sky color
+
+        Object.defineProperty(this, "skyColor", {
+            get: () => this._skyColor,
+            set: (value) => {
+                this._skyColor = value;
+
+                // Keep the scene background in sync with the sky color.
+                if (this.isReady && this.scene) {
+                    this.scene.background = new THREE.Color(value);
+                }
+            }
+        });
 
         if (typeof THREE !== "undefined") {
             this.isReady = true; // Three.js is loaded and ready to use
             this.scene = new THREE.Scene(); // Create a new scene
+            this.skyColor = this._skyColor;
 
             // The default camera
             this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
