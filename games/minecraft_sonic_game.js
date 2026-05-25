@@ -4,6 +4,7 @@ import * as THREE from "three";
 import Cobble from "../COBBLE/main.js";
 import EntityManager from "../COBBLE/plugins/entityManager.js";
 import Camera from "../COBBLE/plugins/camera.js";
+import PhysicsManager from "../COBBLE/plugins/physicsManager.js";
 
 // ============================================================
 //  Engine + Plugin Setup
@@ -14,16 +15,14 @@ const entityManager = new EntityManager();
 cobble.addPlugin(entityManager);
 cobble.skyColor = 0x87aaeb; // light blue
 
-// ============================================================
-//  Ground
-// ============================================================
 
-const ground = entityManager.addBox();
-ground._visual.scale.set(5, 1, 5000);
-ground.entity.position.y = -0.5;
-ground._visual.material.roughness = 1;
-ground.applyTexture("./COBBLE/assets/minecraft/blocks/chiseled_stone_bricks.png", 5, 5000);
-ground.applyLightmap("./COBBLE/assets/minecraft/blocks/chiseled_stone_bricks.png", 5, 5000);
+const physics = new PhysicsManager();
+cobble.addPlugin(physics);
+
+// Change global gravity for everyone
+physics.defaults.gravity.set(0, -20, 0);
+physics.defaults.restitution = 0;
+physics.defaults.friction = -0.01;
 
 
 // ============================================================
@@ -375,13 +374,13 @@ function createSonicCharacter(config) {
     const player = box();
     player._visual.material.transparent = true;
     player._visual.material.opacity = 0;
-    player.setScale({ x: 0.8, y: 2, z: 0.8 });
+    player.setScale({ x: 0.5, y: 1.8, z: 0.5 });
 
     // Torso
     const torso = box();
     torso.setScale({ x: 0.35, y: 0.45, z: 0.25 });
     torso.applyMaterial(mat(config.colors.torso ?? config.colors.body));
-    torso.entity.position.y = 0.3;
+    torso.entity.position.y = 0.1;
     player.attachEntity(torso);
 
     config.stomach?.(torso);
@@ -595,7 +594,7 @@ function createSonicCharacter(config) {
 
 
 // ============================================================
-//  Walk Animation
+//  Animations
 // ============================================================
 
 function applyWalkAnimation(character, swing, swing2) {
@@ -604,11 +603,11 @@ function applyWalkAnimation(character, swing, swing2) {
     b.rightShoulder.entity.rotation.x = -swing;
     b.leftElbow.entity.rotation.x     =  swing - 1;
     b.rightElbow.entity.rotation.x    = -swing - 1;
-    b.leftHip.entity.rotation.x       = -swing;
-    b.leftKnee.entity.rotation.x      = (-swing2 * 1.2) + 1;
+    b.leftHip.entity.rotation.x       = -swing * 2;
+    b.leftKnee.entity.rotation.x      = (-swing2 * 2.5) + 1.4;
     b.leftAnkle.entity.rotation.x     = -swing;
-    b.rightHip.entity.rotation.x      =  swing;
-    b.rightKnee.entity.rotation.x     =  (swing2 * 1.2) + 1;
+    b.rightHip.entity.rotation.x      =  swing * 2;
+    b.rightKnee.entity.rotation.x     =  (swing2 * 2.5) + 1.4;
     b.rightAnkle.entity.rotation.x    =  swing;
 }
 
@@ -617,60 +616,68 @@ function applyWalkAnimation(character, swing, swing2) {
 //  Scene Population
 // ============================================================
 
+
 const sonic = createSonicCharacter(SONIC);
-sonic.velocity.z = 5;
-sonic.entity.position.set(0, 1, 0);
+sonic.entity.position.set(0, 1, -20);
 
-// Scene Population — add after knuckles
-const tails = createSonicCharacter(TAILS);
-tails.velocity.z = 5;
-tails.entity.position.set(1, 1, -0.5); 
-
-const knuckles = createSonicCharacter(KNUCKLES);
-knuckles.velocity.z = 5;
-knuckles.entity.position.set(-1, 1, -0.5);
-
-const shadow = createSonicCharacter(SHADOW);
-shadow.velocity.z = 5;
-shadow.entity.position.set(-2, 1, -1);
-
-const amy = createSonicCharacter(AMY);
-amy.velocity.z = 5;
-amy.entity.position.set(2, 1, -1);
-
-// Invisible anchor for the camera to follow
-const camTarget = entityManager.addBox();
-camTarget.setScale({ x: 0, y: 0, z: 0 });
-camTarget.entity.position.set(0, 1, 0);
-camTarget.velocity.z = 5;
-
-const camera = new Camera(null, camTarget.entity);
+const camera = new Camera(null, null);
 cobble.addPlugin(camera);
+camera.position.set(0, 0.6986234459937166, 3.32806580531461);
+camera.rotation.set(-0.04834938665190285, 0, 0);
 camera.mode = "Orbit";
-camera.offset.x = 3;
-camera.offset.y = 1.5;
+camera.offset.x = 6.2;
+camera.offset.y = 0.3;
 camera.orbitAngle = 0; ///////////////////////////////////////////////////////////////////////////////
 
+// This sphere ignores global gravity, floats slowly
+physics.addBody(sonic, { type: "dynamic", shape: "box", mass: 1});
+
+// A slope — just a rotated static box
 
 // ============================================================
-//  Game Loop
+//  Ground
 // ============================================================
 
-let walkTime = 0;
+const ground = entityManager.addBox();
+ground._visual.scale.set(5, 500, 500);
+ground.entity.position.y = -250.5;
+ground._visual.material.roughness = 1;
+ground.applyTexture("./COBBLE/assets/minecraft/blocks/chiseled_stone_bricks.png", 5, 500);
+ground.applyLightmap("./COBBLE/assets/minecraft/blocks/chiseled_stone_bricks.png", 5, 500);
+physics.addBody(ground, { type: "static", shape: "box" });
+
+
+// physics.debug = true;
+
+
+
+
+
+let walkPhase = 0;
 
 setInterval(() => {
-    camera.orbitAngle -= 0.001;
+    const vel = sonic.physics?.state?.velocity ?? new THREE.Vector3();
+    const hSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z); // horizontal only, ignore y
 
-    walkTime += 0.05;
-    const swing  = Math.sin(walkTime * 1.5) * 0.8;
-    const swing2 = Math.sin((walkTime - 1) * 1.5) * 0.8;
+    // Advance the animation phase proportional to horizontal speed.
+    // When hSpeed is 0 the phase freezes and the legs stop mid-stride.
+    walkPhase += (16 / 1000) * hSpeed * 2.5;
 
-    applyWalkAnimation(sonic, swing, swing2);
-    applyWalkAnimation(shadow, swing, swing2);
-    applyWalkAnimation(knuckles, swing, swing2);
-    applyWalkAnimation(tails, swing, swing2);
-    applyWalkAnimation(amy, swing, swing2);
-}, 10);
+    if (hSpeed > 0.05) {
+        applyWalkAnimation(sonic, -Math.sin(walkPhase) * 0.5, Math.cos(walkPhase) * 0.5);
+    } else {
+        applyWalkAnimation(sonic, 0, 0); // return to idle pose
+    }
+
+    physics.applyImpulse(sonic, new THREE.Vector3(0, 0, 0.1));
+
+    if (cobble.frame >= 180) {
+        camera.target = sonic.entity;
+    }
+    if (cobble.frame >= 270 && camera.orbitAngle >= -1) {
+        camera.orbitAngle -= 0.01;
+    }
+}, 16);
 
 
 console.log(cobble);

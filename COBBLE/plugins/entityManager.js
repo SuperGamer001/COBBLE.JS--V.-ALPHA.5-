@@ -18,20 +18,14 @@ export default class EntityManager extends CobblePlugin {
         const geometry = new THREE.BoxGeometry(1, 1, 1);
         
         entity.applyMesh(geometry);
-        this.addEntity(entity);
+        this.attachEntity(entity);
 
         return entity;
     }
 
     // Adds 
-    addEntity(entity) {
+    attachEntity(entity) {
         this.parent.scene.add(entity.entity);
         this.entities.push(entity);
-    }
-
-    update(dt) {
-        for (const entity of this.entities) {
-            entity.update(dt);
-        }
     }
 }

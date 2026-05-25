@@ -44,6 +44,8 @@ export default class Cobble {
             this.renderer = new THREE.WebGLRenderer();
             this.renderer.setSize(window.innerWidth, window.innerHeight);
 
+            this.frame = 0; // Frame counter for debugging and time-based events
+
             // Append the renderer to the body
             document.body.appendChild(this.renderer.domElement);
         } else {
@@ -51,6 +53,7 @@ export default class Cobble {
         }
 
         this.update = (time = 0) => {
+            this.frame++;
             if (!this.isReady) return;
 
             const dt = (time - this._lastTime) / 1000; // seconds

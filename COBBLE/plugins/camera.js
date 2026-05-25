@@ -41,6 +41,22 @@ export default class Camera extends CobblePlugin {
         this._checkInputManager();
     }
 
+    get position() {
+        return this.camera.position;
+    }
+
+    set position(value) {
+        this.camera.position.copy(value);
+    }
+
+    set rotation(value) {
+        this.camera.rotation.copy(value);
+    }
+
+    get rotation() {
+        return this.camera.rotation;
+    }
+
     _checkInputManager() {
         // If parent isn't available yet (e.g. set during constructor), skip silently
         if (!this.parent) return;

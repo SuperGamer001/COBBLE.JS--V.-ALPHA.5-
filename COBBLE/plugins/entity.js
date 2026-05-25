@@ -17,14 +17,6 @@ export default class Entity extends CobblePlugin {
 
         this._visual = new THREE.Mesh(this.geometry, this.material); // Visual only — scale lives here
         this.entity.add(this._visual);
-
-        this.velocity = { x: 0, y: 0, z: 0 };
-    }
-
-    update(dt) {
-        this.entity.position.x += this.velocity.x * dt;
-        this.entity.position.y += this.velocity.y * dt;
-        this.entity.position.z += this.velocity.z * dt;
     }
 
     applyMesh(geometry) {
