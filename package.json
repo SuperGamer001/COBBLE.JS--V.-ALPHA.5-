@@ -7,7 +7,9 @@
     "plugins": [
       {"name": "entityManager", "version": "0.1.0", "dependencies": ["entity"], "script": "entityManager.js"},
       {"name": "entity", "version": "0.1.0", "dependencies": [], "script": "entity.js"},
-      {"name": "camera", "version": "0.1.0", "dependencies": [], "script": "camera.js"}
+      {"name": "camera", "version": "0.1.0", "dependencies": [], "script": "camera.js"},
+      {"name": "physicsManger", "version": "0.1.0", "dependencies": [], "script": "physicsManager.js"},
+      {"name": "inputManager", "version": "0.1.0", "dependencies": [], "script": "inputManager.js"}
     ]
   }
 }

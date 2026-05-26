@@ -15,14 +15,13 @@ const entityManager = new EntityManager();
 cobble.addPlugin(entityManager);
 cobble.skyColor = 0x87aaeb; // light blue
 
-
 const physics = new PhysicsManager();
 cobble.addPlugin(physics);
 
 // Change global gravity for everyone
 physics.defaults.gravity.set(0, -20, 0);
-physics.defaults.restitution = 0;
-physics.defaults.friction = -0.01;
+physics.defaults.restitution = 0; // Prevent bouncing
+physics.defaults.friction = 0; // Allow sliding
 
 
 // ============================================================
@@ -46,8 +45,9 @@ const SONIC = {
         muzzle:  { scale: { x: 0.52, y: 0.15, z: 0.1  }, position: { x: 0,    y: -0.18, z: 0.1  } },
         mouth:   { position: { x: 0.1, y: -0.17, z: 0.101 } },
         nose:    { position: { x: 0,   y: -0.12, z: 0.09  } },
-        eyes:    { scale: { x: 0.51, y: 0.25, z: 0.1  }, position: { x: 0,    y:  0.01, z: 0.08  } },
-        brows:   { scale: { x: 0.1,  y: 0.2,  z: 0.1  }, position: { x: 0,    y:  0.1,  z: 0.084 }, rx: -0.1 },
+        eyes:    { scale: { x: 0.51, y: 0.25, z: 0.1  }, position: { x: 0,      y:  0.01, z: 0.08  } },
+        eyelids: { scale: { x: 0.52, y: 0.25, z: 0.1  }, position: { x: -0.001, y:  0.02, z: 0.08  } },
+        brows:   { scale: { x: 0.1,  y: 0.2,  z: 0.1  }, position: { x: 0,      y:  0.1,  z: 0.084 }, rx: -0.1 },
     },
     quills: [
         { x:  0,    y:  0.14, z: 0.07, rx: -1.1, ry: 0, rz:  0,    sx: 0.25, sy: 0.65, sz: 0.25 },
@@ -99,6 +99,7 @@ const TAILS = {
         mouth:   { position: { x: 0, y: -0.18, z: 0.171 } },
         nose:    { position: { x: 0,   y: -0.12, z: 0.16  } },
         eyes:    { scale: { x: 0.51, y: 0.25, z: 0.1  }, position: { x: 0,    y:  0.01, z: 0.151  } },
+        eyelids: { scale: { x: 0.521, y: 0.25, z: 0.241  }, position: { x: -0.001,    y:  0.02, z: 0.09  } },
         brows:   { scale: { x: 0.1,  y: 0.25, z: 0.1  }, position: { x: 0,    y:  0.015,  z: 0.16 }, rx: -0.05 },
     },
     quills: [
@@ -180,6 +181,7 @@ const KNUCKLES = {
         mouth:   { position: { x: 0,   y: -0.19, z: 0.186 } },
         nose:    { position: { x: 0,   y: -0.14, z: 0.15  } },
         eyes:    { scale: { x: 0.51, y: 0.2,  z: 0.1  }, position: { x: 0,    y: -0.01, z: 0.151 } },
+        eyelids: { scale: { x: 0.52, y: 0.25, z: 0.25  }, position: { x: -0.001,    y:  0.02, z: 0.08  } },
         brows:   { scale: { x: 0.1,  y: 0.3,  z: 0.1  }, position: { x: 0,    y:  0.04, z: 0.154 }, rx: -0.03 },
     },
     quills: [
@@ -235,6 +237,7 @@ const AMY = {
         mouth:   { position: { x: 0, y: -0.18, z: 0.171 } },
         nose:    { position: { x: 0,   y: -0.12, z: 0.16  } },
         eyes:    { scale: { x: 0.51, y: 0.25, z: 0.1  }, position: { x: 0,    y:  0.01, z: 0.151  } },
+        eyelids: { scale: { x: 0.52, y: 0.25, z: 0.25  }, position: { x: -0.001,    y:  0.02, z: 0.08  } },
         brows:   { scale: { x: 0.1,  y: 0.2,  z: 0.25  }, position: { x: 0,    y:  0.08,  z: 0.084 }, rx: -0.1 },
     },
     quills: [
@@ -310,6 +313,7 @@ const SHADOW = {
         mouth:   { position: { x: 0.1, y: -0.17, z: 0.101 }, rotation: { x: 0, y: 0, z: 0.3 } },
         nose:    { position: { x: 0,   y: -0.12, z: 0.09  } },
         eyes:    { scale: { x: 0.51, y: 0.2, z: 0.1  }, position: { x: 0,    y:  0, z: 0.08  } },
+        eyelids: { scale: { x: 0.52, y: 0.25, z: 0.1  }, position: { x: -0.001, y:  0.02, z: 0.08  } },
         brows:   { scale: { x: 0.1,  y: 0.25,  z: 0.1  }, position: { x: 0,    y:  0.1,  z: 0.084 }, rx: -0.1 },
     },
     quills: [
@@ -427,6 +431,12 @@ function createSonicCharacter(config) {
     eyes.applyMaterial(mat(0xffffff));
     eyes.entity.position.set(h.eyes.position.x, h.eyes.position.y, h.eyes.position.z);
     head.attachEntity(eyes);
+
+    const eyelids = box();
+    eyelids.setScale(h.eyelids.scale);
+    eyelids.applyMaterial(mat(config.colors.body));
+    eyelids.entity.position.set(h.eyelids.position.x, h.eyelids.position.y, h.eyelids.position.z + 0.002);
+    head.attachEntity(eyelids);
 
     const brows = box();
     brows.setScale(h.brows.scale);
@@ -577,6 +587,8 @@ function createSonicCharacter(config) {
         head,
         torso,
         quills:        quillBones,
+        eyes,
+        eyelids,
         leftShoulder:  leftArm.shoulder,
         rightShoulder: rightArm.shoulder,
         leftElbow:     leftArm.elbow,
@@ -589,6 +601,13 @@ function createSonicCharacter(config) {
         rightAnkle:    rightLeg.ankle,
     };
 
+    player.character = {
+        isWalking: false,
+        inBallForm: false,
+        isJumping: false,
+        isFalling: false,
+    }
+
     return player;
 }
 
@@ -597,8 +616,29 @@ function createSonicCharacter(config) {
 //  Animations
 // ============================================================
 
+function applyIdleAnimation(character, swing) {
+    const b = character.bones;
+    b.neck.entity.rotation.set(0, 0, 0);
+    b.torso.entity.rotation.set(0, 0, 0);
+    b.leftShoulder.entity.rotation.set(0, 0, swing * 1.5 - 0.07);
+    b.rightShoulder.entity.rotation.set(0, 0, -swing * 1.5 + 0.07);
+    b.leftElbow.entity.rotation.set(0, 0, 0);
+    b.rightElbow.entity.rotation.set(0, 0, 0);
+    b.leftHip.entity.rotation.set(0, 0, 0);
+    b.leftKnee.entity.rotation.set(0, 0, 0);
+    b.leftAnkle.entity.rotation.set(0, 0, 0);
+    b.rightHip.entity.rotation.set(0, 0, 0);
+    b.rightKnee.entity.rotation.set(0, 0, 0);
+    b.rightAnkle.entity.rotation.set(0, 0, 0);
+}
+
 function applyWalkAnimation(character, swing, swing2) {
     const b = character.bones;
+    b.leftShoulder.entity.rotation.set(0, 0, -0.5);
+    b.rightShoulder.entity.rotation.set(0, 0, 0.5);
+    b.torso.entity.rotation.set(0, 0, 0);
+    
+    b.neck.entity.rotation.set(0, Math.sin(swing) * 0.1, 0);
     b.leftShoulder.entity.rotation.x  =  swing;
     b.rightShoulder.entity.rotation.x = -swing;
     b.leftElbow.entity.rotation.x     =  swing - 1;
@@ -611,6 +651,194 @@ function applyWalkAnimation(character, swing, swing2) {
     b.rightAnkle.entity.rotation.x    =  swing;
 }
 
+function applyRunAnimation(character, swing, swing2) {
+    const b = character.bones;
+
+    // Lean the whole torso forward — Sonic's signature aggressive forward tilt
+    b.torso.entity.rotation.set(0.5, 0, 0);
+
+    // Shoulders pulled back and inward (arms swept behind the body)
+    b.leftShoulder.entity.rotation.set(0.6, 0, -0.8);
+    b.rightShoulder.entity.rotation.set(0.6, 0, 0.8);
+
+    // Head stays relatively level despite torso lean
+    b.neck.entity.rotation.set(Math.sin(swing) * 0.04 - 0.4, 0, 0);
+
+    // Elbows bent and tucked
+    b.leftElbow.entity.rotation.set(0, 0, 0);
+    b.rightElbow.entity.rotation.set(0, 0, 0);
+
+    // Legs: much higher amplitude for that fast wheel-like cycling motion
+    b.leftHip.entity.rotation.x       = -swing * 2.5 - 0.7;
+    b.leftKnee.entity.rotation.x      = (-swing2 * 2.5) + 1.4;
+    b.leftAnkle.entity.rotation.x     = -swing;
+    b.rightHip.entity.rotation.x      =  swing * 2.5 - 0.7;
+    b.rightKnee.entity.rotation.x     =  (swing2 * 2.5) + 1.4;
+    b.rightAnkle.entity.rotation.x    =  swing;
+
+}
+
+function applyBallAnimation(character, speed) {
+    const b = character.bones;
+    b.neck.entity.rotation.set(0.4, 0, 0);
+    b.leftShoulder.entity.rotation.set(-1, 0.5, 0);
+    b.rightShoulder.entity.rotation.set(-1.3, -0.5, 0);
+    b.leftElbow.entity.rotation.set(-0.5, 0, 0);
+    b.rightElbow.entity.rotation.set(-0.5, 0, 0);
+    b.leftHip.entity.rotation.set(-2, 0, 0);
+    b.leftKnee.entity.rotation.set(2.5, 0, 0);
+    b.leftAnkle.entity.rotation.set(0, 0, 0);
+    b.rightHip.entity.rotation.set(-2, 0, 0);
+    b.rightKnee.entity.rotation.set(2.5, 0, 0);
+    b.rightAnkle.entity.rotation.set(0, 0, 0);
+
+    // Spin Sonic in ball form based on walk phase
+    b.torso.entity.rotation.x += (speed * 0.05) + 0.2;
+}
+
+function blink(character, dt) {
+    const b = character?.bones;
+    if (!b?.eyelids?.entity) return;
+
+    const eyelids = b.eyelids.entity;
+    const eyes = b.eyes?.entity;
+    if (!character.character) character.character = {};
+
+    const rand = (min, max) => min + Math.random() * (max - min);
+    const lerp = (a, c, t) => a + (c - a) * t;
+    const smooth = (t) => t * t * (3 - 2 * t);
+
+    if (!character.character._blink) {
+        const closedScaleY = eyelids.scale.y;
+        const closedPosY = eyelids.position.y;
+
+        const openScaleY = Math.max(0.01, closedScaleY * 0.08);
+
+        let openPosY = closedPosY + closedScaleY * 0.6;
+        if (eyes) {
+            const eyesTopY = eyes.position.y + (eyes.scale.y * 0.5);
+            openPosY = eyesTopY + (openScaleY * 0.5) + 0.01;
+        }
+
+        character.character._blink = {
+            phase: "opening", // eyelids are built closed by default
+            t: 0,
+            nextBlinkIn: rand(2.0, 6.0),
+            open: { scaleY: openScaleY, posY: openPosY },
+            closed: { scaleY: closedScaleY, posY: closedPosY },
+            durations: { open: 0.09, close: 0.06, closedHold: 0.04 },
+        };
+    }
+
+    const s = character.character._blink;
+    const safeDt = Math.min(Math.max(dt ?? 0, 0), 0.05);
+
+    const apply = (scaleY, posY) => {
+        eyelids.scale.y = scaleY;
+        eyelids.position.y = posY;
+    };
+
+    if (s.phase === "opening") {
+        s.t += safeDt;
+        const a = Math.min(s.t / s.durations.open, 1);
+        const e = smooth(a);
+        apply(
+            lerp(s.closed.scaleY, s.open.scaleY, e),
+            lerp(s.closed.posY, s.open.posY-0.43, e)
+        );
+        if (a >= 1) {
+            s.phase = "open";
+            s.t = 0;
+            s.nextBlinkIn = rand(0.1, 10);
+        }
+        return;
+    }
+
+    if (s.phase === "open") {
+        s.t += safeDt;
+        apply(s.open.scaleY, s.open.posY-0.4);
+        if (s.t >= s.nextBlinkIn) {
+            s.phase = "closing";
+            s.t = 0;
+        }
+        return;
+    }
+
+    if (s.phase === "closing") {
+        s.t += safeDt;
+        const a = Math.min(s.t / s.durations.close, 1);
+        const e = smooth(a);
+        apply(
+            lerp(s.open.scaleY, s.closed.scaleY, e),
+            lerp(s.open.posY-0.43, s.closed.posY, e)
+        );
+        if (a >= 1) {
+            s.phase = "closed";
+            s.t = 0;
+        }
+        return;
+    }
+
+    if (s.phase === "closed") {
+        s.t += safeDt;
+        apply(s.closed.scaleY, s.closed.posY);
+        if (s.t >= s.durations.closedHold) {
+            s.phase = "opening";
+            s.t = 0;
+        }
+        return;
+    }
+}
+
+
+
+// ============================================================
+//  Ground Creation
+// ============================================================
+function createGround({
+    px = 0,
+    py = -1,
+    pz = 0,
+    rx = 0,
+    ry = 0,
+    rz = 0,
+    sx = 10,
+    sy = 1,
+    sz = 10,
+    color = 0x228822,
+} = {}) {
+    // Create the box
+    const ground = entityManager.addBox();
+
+    // Apply it's visual properties
+    ground.setScale({ x: sx, y: sy, z: sz });
+    ground.entity.position.set(px, py, pz);
+    ground.entity.rotation.set(rx, ry, rz);
+
+    let mat = (color) => new THREE.MeshStandardMaterial({ color });
+    ground.applyMaterial(mat(color));
+
+    // Add it to the physics world as a static body
+    physics.addBody(ground, { type: "static", shape: "box" });
+
+    console.log("Created ground entity:", ground);
+    return ground;
+}
+
+createGround({ py: -0.5, sz: 20, color: 0x228822 }); // main ground plane
+createGround({sx: 500, sz: 500, py: -2, color: 0x888888 }); // back wall
+
+createGround({ px: -10, py: 6, sy: 10, color: 0x228822 }); // left wall
+createGround({ px:  10, py: 6, sy: 10, color: 0x228822 }); // right wall
+
+
+// ============================================================
+// Global Variables
+// ============================================================
+
+const KEYS = {}; // Keep track of which keys are currently held down
+let PRESSED = {}; // Keep track of which keys were just pressed (resets every frame)
+
 
 // ============================================================
 //  Scene Population
@@ -618,66 +846,152 @@ function applyWalkAnimation(character, swing, swing2) {
 
 
 const sonic = createSonicCharacter(SONIC);
-sonic.entity.position.set(0, 1, -20);
+sonic.entity.position.set(0, 5, 0);
+sonic.entity.rotation.y = Math.PI; // Start facing forward (towards the camera)
+physics.addBody(sonic, { type: "dynamic", shape: "box", mass: 1});
 
-const camera = new Camera(null, null);
+const camera = new Camera(null, sonic.entity);
 cobble.addPlugin(camera);
 camera.position.set(0, 0.6986234459937166, 3.32806580531461);
 camera.rotation.set(-0.04834938665190285, 0, 0);
 camera.mode = "Orbit";
-camera.offset.x = 6.2;
-camera.offset.y = 0.3;
-camera.orbitAngle = 0; ///////////////////////////////////////////////////////////////////////////////
+camera.offset.x = 8; // 6.2 for the Title Screen
+camera.offset.y = 5;  // 0.3 for the Title Screen
+camera.orbitAngle = Math.PI; // 0 for the Title Screen, PI for going behind Sonic in gameplay
 
-// This sphere ignores global gravity, floats slowly
-physics.addBody(sonic, { type: "dynamic", shape: "box", mass: 1});
-
-// A slope — just a rotated static box
-
-// ============================================================
-//  Ground
-// ============================================================
-
-const ground = entityManager.addBox();
-ground._visual.scale.set(5, 500, 500);
-ground.entity.position.y = -250.5;
-ground._visual.material.roughness = 1;
-ground.applyTexture("./COBBLE/assets/minecraft/blocks/chiseled_stone_bricks.png", 5, 500);
-ground.applyLightmap("./COBBLE/assets/minecraft/blocks/chiseled_stone_bricks.png", 5, 500);
-physics.addBody(ground, { type: "static", shape: "box" });
 
 
 // physics.debug = true;
 
 
-
-
+addEventListener("keydown", (e) => {
+    KEYS[e.key.toLowerCase()] = true;
+    PRESSED[e.key.toLowerCase()] = true;
+});
+addEventListener("keyup", (e) => {
+    KEYS[e.key.toLowerCase()] = false;
+});
 
 let walkPhase = 0;
+let lastFrameTime = performance.now() / 1000;
 
-setInterval(() => {
-    const vel = sonic.physics?.state?.velocity ?? new THREE.Vector3();
-    const hSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z); // horizontal only, ignore y
+// ── Constants ───────────────────────────────────────────────
+const TOP_SPEED     = 18;   // max horizontal speed (units/s)
+const ACCEL_FORCE   = 0.18; // base impulse per frame while accelerating
+const TURN_PENALTY  = 0.5;  // extra brake impulse when pressing against current velocity
+const BRAKE_FACTOR  = 0.18; // deceleration multiplier when no key held
+const STOP_THRESH   = 0.1; // speed below which we hard-stop
+const ROT_LERP      = 0.2; // how fast Sonic rotates to face his velocity (0–1)
+// ────────────────────────────────────────────────────────────
 
-    // Advance the animation phase proportional to horizontal speed.
-    // When hSpeed is 0 the phase freezes and the legs stop mid-stride.
-    walkPhase += (16 / 1000) * hSpeed * 2.5;
+cobble.nextFrame = () => {
+    const now = performance.now() / 1000;
+    const dt = Math.min(Math.max(now - lastFrameTime, 0), 0.05);
+    lastFrameTime = now;
 
-    if (hSpeed > 0.05) {
+    const vel    = sonic.physics?.state?.velocity ?? new THREE.Vector3();
+    const hSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+    const grounded = sonic.physics?.state?.isGrounded;
+
+    // ── Land from jump ──────────────────────────────────────
+    if (sonic.character.jumping && grounded) {
+        sonic.character.jumping = false;
+    }
+
+    // ── Jump ────────────────────────────────────────────────
+    if (PRESSED[" "] && grounded) {
+        physics.applyImpulse(sonic, new THREE.Vector3(0, 15, 0));
+        sonic.character.jumping = true;
+    }
+
+    // ── Camera-relative input direction (same as before) ────────
+    const camYaw     = camera.orbitAngle ?? Math.PI;
+    const camForward = new THREE.Vector3(Math.sin(camYaw), 0,  Math.cos(camYaw));
+    const camRight   = new THREE.Vector3(Math.cos(camYaw), 0, -Math.sin(camYaw));
+
+    const inputDir = new THREE.Vector3();
+    if (KEYS["w"]) inputDir.addScaledVector(camForward, -1);
+    if (KEYS["s"]) inputDir.addScaledVector(camForward,  1);
+    if (KEYS["a"]) inputDir.addScaledVector(camRight,   -1);
+    if (KEYS["d"]) inputDir.addScaledVector(camRight,    1);
+
+    if (KEYS["q"]) camera.orbitAngle += 0.05;
+    if (KEYS["e"]) camera.orbitAngle -= 0.05;
+
+    const hasInput   = inputDir.lengthSq() > 0;
+    if (hasInput) inputDir.normalize();
+
+    // ── Unified speed + direction steering ──────────────────────
+    const hVel        = new THREE.Vector3(vel.x, 0, vel.z);
+    let   speed       = hVel.length();                         // scalar, always >= 0
+    const currentDir  = speed > 0.01
+        ? hVel.clone().divideScalar(speed)                     // normalised movement direction
+        : (hasInput ? inputDir.clone() : camForward.clone());  // fallback when nearly stopped
+
+    if (hasInput) {
+        // 1. Accelerate — scale force down near top speed
+        const accel = ACCEL_FORCE * (1 - Math.min(speed / TOP_SPEED, 1) * 0.6);
+        speed = Math.min(speed + accel, TOP_SPEED);
+
+        // 2. Steer — rotate current direction toward input direction each frame.
+        //    turnRate increases with speed so fast movement steers sharply.
+        const turnRate = 0.18 + (speed / TOP_SPEED) * 0.18;
+        const newDir   = currentDir.clone().lerp(inputDir, turnRate).normalize();
+
+        physics.setVelocity(sonic, new THREE.Vector3(
+            newDir.x * speed,
+            vel.y,
+            newDir.z * speed
+        ));
+    } else if (grounded) {
+        // 3. Decelerate smoothly when no input, preserve direction
+        speed = Math.max(speed - ACCEL_FORCE * 1.5, 0);
+        physics.setVelocity(sonic, new THREE.Vector3(
+            currentDir.x * speed,
+            vel.y,
+            currentDir.z * speed
+        ));
+    }
+
+    // ── Hard speed cap (safety net) ─────────────────────────────
+    const newHSpeed = Math.sqrt(
+        sonic.physics.state.velocity.x ** 2 + sonic.physics.state.velocity.z ** 2
+    );
+    if (newHSpeed > TOP_SPEED) {
+        const s = TOP_SPEED / newHSpeed;
+        const v = sonic.physics.state.velocity;
+        physics.setVelocity(sonic, new THREE.Vector3(v.x * s, v.y, v.z * s));
+    }
+
+    // ── Smooth rotation toward velocity direction ────────────
+    if (hSpeed > 0.1) {
+        const targetAngle = Math.atan2(vel.x, vel.z);
+        // Shortest-path lerp on the angle
+        let delta = targetAngle - sonic.entity.rotation.y;
+        // Wrap delta to [-PI, PI]
+        while (delta >  Math.PI) delta -= Math.PI * 2;
+        while (delta < -Math.PI) delta += Math.PI * 2;
+        sonic.entity.rotation.y += delta * ROT_LERP;
+    }
+
+    // ── Walk phase & animations ──────────────────────────────
+    walkPhase += dt * hSpeed * 1.5;
+    let breathing = Math.sin((cobble.frame / 120) * 8) * 0.05; // subtle up/down motion to make idle pose less static
+
+    if (sonic.character.jumping) {
+        applyBallAnimation(sonic, Math.min(hSpeed, 15));
+    } else if (hSpeed > 15) {
+        applyRunAnimation(sonic, -Math.sin(walkPhase) * 0.5, Math.cos(walkPhase) * 0.5);
+    } else if (hSpeed > 0.05) {
         applyWalkAnimation(sonic, -Math.sin(walkPhase) * 0.5, Math.cos(walkPhase) * 0.5);
     } else {
-        applyWalkAnimation(sonic, 0, 0); // return to idle pose
+        applyIdleAnimation(sonic, breathing);
     }
 
-    physics.applyImpulse(sonic, new THREE.Vector3(0, 0, 0.1));
+    blink(sonic, dt);
 
-    if (cobble.frame >= 180) {
-        camera.target = sonic.entity;
-    }
-    if (cobble.frame >= 270 && camera.orbitAngle >= -1) {
-        camera.orbitAngle -= 0.01;
-    }
-}, 16);
+    PRESSED = {};
+};
 
 
 console.log(cobble);

@@ -32,7 +32,7 @@ export default class PhysicsManager extends CobblePlugin {
             restitution:     0.4,     // bounciness     (0 = dead stop, 1 = perfect bounce)
             friction:        0.5,     // surface drag   (0 = ice,       1 = very rough)
             stickiness:      0.0,     // adhesion       (0 = none,      1 = glue-like)
-            airResistance:   0.01,    // velocity bleed per second (applied continuously)
+            airResistance:   0.1,    // velocity bleed per second (applied continuously)
             sleepThreshold:  0.0,    // bodies slower than this are put to sleep
         };
         // ─────────────────────────────────────────────────────────────────────
@@ -136,6 +136,17 @@ export default class PhysicsManager extends CobblePlugin {
         entity.physics.state.isSleeping = false;
     }
 
+    /**
+     * Convenience: set the velocity of a body.
+     * @param {Entity}          entity
+     * @param {THREE.Vector3}   velocity
+     */
+    setVelocity(entity, velocity) {
+        if (!entity.physics) return;
+        entity.physics.state.velocity.copy(velocity);
+        entity.physics.state.isSleeping = false;
+    }
+
     // ── Main loop ─────────────────────────────────────────────────────────────
 
     update(dt) {
@@ -168,7 +179,7 @@ export default class PhysicsManager extends CobblePlugin {
             state.velocity.addScaledVector(g, dt);
 
             // Air resistance (drag)
-            state.velocity.multiplyScalar(1 - cfg.airResistance * dt * 60);
+            state.velocity.multiplyScalar(1 - (cfg.airResistance / 100) * dt * 60);
 
             // Integrate position
             entity.entity.position.addScaledVector(state.velocity, dt);

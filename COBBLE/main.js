@@ -56,6 +56,11 @@ export default class Cobble {
             this.frame++;
             if (!this.isReady) return;
 
+            // If the user made a custom nextFrame function, call it. This allows users to inject code that runs at the start of every frame, before the plugins update.
+            if (this.nextFrame) {
+                this.nextFrame();
+            }
+
             const dt = (time - this._lastTime) / 1000; // seconds
             this._lastTime = time;
 
