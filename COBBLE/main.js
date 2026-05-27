@@ -72,18 +72,32 @@ export default class Cobble {
                 }
             }
 
-            const cameraPlugins = Object.values(this.plugins).filter((plugin) => plugin && plugin.isCameraPlugin);
+            const uiPlugins = Object.values(this.plugins).filter(
+                (plugin) => plugin && plugin.isUIPlugin && typeof plugin.render === "function"
+            );
 
-            if (cameraPlugins.length > 0) {
-                for (const cameraPlugin of cameraPlugins) {
+            const cameraPluginEntries = Object.entries(this.plugins).filter(
+                ([, plugin]) => plugin && plugin.isCameraPlugin
+            );
+
+            if (cameraPluginEntries.length > 0) {
+                for (const [cameraKey, cameraPlugin] of cameraPluginEntries) {
                     if (typeof cameraPlugin.render === "function") {
                         cameraPlugin.render(this.renderer, this.scene);
+                    }
+
+                    for (const uiPlugin of uiPlugins) {
+                        uiPlugin.render(this.renderer, cameraPlugin, cameraKey);
                     }
                 }
             }
             else {
                 this.renderer.setScissorTest(false);
                 this.renderer.render(this.scene, this.camera);
+
+                for (const uiPlugin of uiPlugins) {
+                    uiPlugin.render(this.renderer, null, null);
+                }
             }
 
             requestAnimationFrame(this.update);

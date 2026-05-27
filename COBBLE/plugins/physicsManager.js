@@ -16,7 +16,23 @@ import CobblePlugin from "./plugin.js";
 //      box.physics.config.gravity = new THREE.Vector3(0, -3, 0);
 //
 //  Collision shapes supported: "box" (AABB/OBB) | "sphere"
-//  Body types supported:       "dynamic"        | "static"
+//  Body types supported:       "dynamic"        | "static" | "ghost"
+//
+//  Ghost bodies:
+//      physics.addBody(ring, { type: "ghost", shape: "sphere" });
+//
+//      Ghost bodies phase through all other bodies — no push-out or velocity
+//      change is ever applied. They still participate in overlap detection,
+//      so the "collision" event fires whenever anything touches them.
+//      Ideal for collectables, triggers, and secret entrances.
+//
+//  Collision events:
+//      physics.on("collision", ({ entities }) => {
+//          const [a, b] = entities;   // the two overlapping entities
+//          // a or b may be a ghost — check body type if needed:
+//          //   physics.getBodyType(a) === "ghost"
+//      });
+//      physics.off("collision", handler);   // unsubscribe
 // ─────────────────────────────────────────────
 
 export default class PhysicsManager extends CobblePlugin {
@@ -24,29 +40,34 @@ export default class PhysicsManager extends CobblePlugin {
         super();
         this.pluginName = "Physics Manager";
 
+        // Browser CustomEvent name fired on every detected overlap.
+        // Listen with: window.addEventListener("cobbleCollision", (e) => console.log(e.detail))
+        this.collisionCustomEventName = "cobbleCollision";
+
         // ── Global physics defaults ───────────────────────────────────────────
-        // Any of these can be overridden per-entity via entity.physics.config
         this.defaults = {
-            gravity:         new THREE.Vector3(0, -9.8, 0), // m/s²
-            mass:            1,       // kg
-            restitution:     0.4,     // bounciness     (0 = dead stop, 1 = perfect bounce)
-            friction:        0.5,     // surface drag   (0 = ice,       1 = very rough)
-            stickiness:      0.0,     // adhesion       (0 = none,      1 = glue-like)
-            airResistance:   0.1,    // velocity bleed per second (applied continuously)
-            sleepThreshold:  0.0,    // bodies slower than this are put to sleep
+            gravity:         new THREE.Vector3(0, -9.8, 0),
+            mass:            1,
+            restitution:     0.4,
+            friction:        0.5,
+            stickiness:      0.0,
+            airResistance:   0.1,
+            sleepThreshold:  0.0,
+            collisionType: "ghost",
         };
         // ─────────────────────────────────────────────────────────────────────
 
-        this._bodies     = []; // Array of registered body descriptors
-        this._debugMeshes = new Map(); // body → { outline, velArrow }
+        this._bodies      = [];
+        this._debugMeshes = new Map();
         this._debug       = false;
 
-        // ── debug (getter/setter) ─────────────────────────────────────────────
-        // Toggle collision shape overlays + velocity arrows on all registered bodies.
-        // Safe to set before or after addBody() calls — meshes are created lazily.
-        //
-        //   physics.debug = true;   // turn on
-        //   physics.debug = false;  // turn off, cleans up all overlays
+        // ── Event listeners ───────────────────────────────────────────────────
+        // Internal map of eventName → Set of handler functions.
+        // Currently emitted events:
+        //   "collision"  →  { entities: [entityA, entityB] }
+        this._listeners = new Map();
+        // ─────────────────────────────────────────────────────────────────────
+
         Object.defineProperty(this, "debug", {
             get: () => this._debug,
             set: (value) => {
@@ -54,7 +75,51 @@ export default class PhysicsManager extends CobblePlugin {
                 if (!this._debug) this._destroyAllDebugMeshes();
             },
         });
-        // ─────────────────────────────────────────────────────────────────────
+    }
+
+    // ── Event system ──────────────────────────────────────────────────────────
+
+    /**
+     * Subscribe to a PhysicsManager event.
+     *
+     * @param {string}   eventName  - Name of the event (e.g. "collision").
+     * @param {Function} handler    - Callback receiving the event payload.
+     *
+     * @example
+     * physics.on("collision", ({ entities }) => {
+     *     const [a, b] = entities;
+     *     if (a === ring || b === ring) ring.collect();
+     * });
+     */
+    on(eventName, handler) {
+        if (!this._listeners.has(eventName)) {
+            this._listeners.set(eventName, new Set());
+        }
+        this._listeners.get(eventName).add(handler);
+    }
+
+    /**
+     * Unsubscribe a previously registered handler.
+     *
+     * @param {string}   eventName
+     * @param {Function} handler
+     */
+    off(eventName, handler) {
+        this._listeners.get(eventName)?.delete(handler);
+    }
+
+    /**
+     * Emit an event to all registered handlers.
+     * @param {string} eventName
+     * @param {*}      payload
+     */
+    _emit(eventName, payload) {
+        const handlers = this._listeners.get(eventName);
+        if (!handlers) return;
+        for (const fn of handlers) {
+            try { fn(payload); }
+            catch (err) { console.error(`PhysicsManager: error in "${eventName}" handler`, err); }
+        }
     }
 
     // ── Public API ────────────────────────────────────────────────────────────
@@ -64,7 +129,7 @@ export default class PhysicsManager extends CobblePlugin {
      *
      * @param {Entity}  entity          - The Cobble Entity to register.
      * @param {object}  options
-     * @param {string}  options.type    - "dynamic" (simulated) | "static" (immovable collider).
+     * @param {string}  options.type    - "dynamic" (simulated) | "static" (immovable) | "ghost" (no collision response).
      * @param {string}  options.shape   - "box" | "sphere".
      * @param {*}       options.size    - Optional manual size.
      *                                   Box   → THREE.Vector3 of half-extents.
@@ -73,9 +138,7 @@ export default class PhysicsManager extends CobblePlugin {
      * @returns {Entity} The same entity, now with entity.physics attached.
      */
     addBody(entity, { type = "dynamic", shape = "box", size = null } = {}) {
-        // ── Attach physics state to the entity ────────────────────────────────
         entity.physics = {
-            // Active simulation state — updated every frame by the engine.
             state: {
                 velocity:        new THREE.Vector3(),
                 angularVelocity: new THREE.Vector3(),
@@ -83,14 +146,8 @@ export default class PhysicsManager extends CobblePlugin {
                 isColliding:     false,
                 isSleeping:      false,
             },
-
-            // Per-entity config overrides — empty by default (inherits PhysicsManager.defaults).
-            // Set any key here to override it for this body only.
-            // e.g.  entity.physics.config.restitution = 0.9;
-            //       entity.physics.config.gravity = new THREE.Vector3(0, -20, 0);
             config: {},
         };
-        // ─────────────────────────────────────────────────────────────────────
 
         if (size === null) size = this._deriveSize(entity, shape);
 
@@ -111,6 +168,25 @@ export default class PhysicsManager extends CobblePlugin {
     }
 
     /**
+     * Returns the body type of a registered entity, or null if not registered.
+     * Useful inside collision handlers to check whether a participant is a ghost.
+     *
+     * @param {Entity} entity
+     * @returns {"dynamic"|"static"|"ghost"|null}
+     *
+     * @example
+     * physics.on("collision", ({ entities }) => {
+     *     const [a, b] = entities;
+     *     if (physics.getBodyType(a) === "ghost" || physics.getBodyType(b) === "ghost") {
+     *         // one of them is a trigger / collectable
+     *     }
+     * });
+     */
+    getBodyType(entity) {
+        return this._bodies.find((b) => b.entity === entity)?.type ?? null;
+    }
+
+    /**
      * Convenience: apply an instant velocity impulse to a body.
      * @param {Entity}          entity
      * @param {THREE.Vector3}   impulse
@@ -124,7 +200,6 @@ export default class PhysicsManager extends CobblePlugin {
 
     /**
      * Convenience: apply a continuous force for one frame (F = ma → a = F/m).
-     * Call from your own update loop before PhysicsManager ticks.
      * @param {Entity}          entity
      * @param {THREE.Vector3}   force   (Newtons)
      * @param {number}          dt      (seconds)
@@ -150,7 +225,6 @@ export default class PhysicsManager extends CobblePlugin {
     // ── Main loop ─────────────────────────────────────────────────────────────
 
     update(dt) {
-        // Guard: clamp dt to avoid tunnelling / explosion on frame spikes
         if (dt <= 0 || dt > 0.1) return;
 
         this._integrateVelocities(dt);
@@ -171,24 +245,17 @@ export default class PhysicsManager extends CobblePlugin {
 
             if (state.isSleeping) continue;
 
-            // Gravity
             const g = cfg.gravity instanceof THREE.Vector3
                 ? cfg.gravity
                 : new THREE.Vector3(cfg.gravity.x ?? 0, cfg.gravity.y ?? -9.8, cfg.gravity.z ?? 0);
 
             state.velocity.addScaledVector(g, dt);
-
-            // Air resistance (drag)
             state.velocity.multiplyScalar(1 - (cfg.airResistance / 100) * dt * 60);
-
-            // Integrate position
             entity.entity.position.addScaledVector(state.velocity, dt);
 
-            // Reset per-frame flags
             state.isGrounded  = false;
             state.isColliding = false;
 
-            // Sleep check
             if (state.velocity.lengthSq() < cfg.sleepThreshold * cfg.sleepThreshold) {
                 state.velocity.set(0, 0, 0);
                 state.isSleeping = true;
@@ -198,24 +265,69 @@ export default class PhysicsManager extends CobblePlugin {
 
     // ── Collision pipeline ────────────────────────────────────────────────────
 
-    _detectAndResolveCollisions(dt) {
+    _detectAndResolveCollisions() {
+        // Detect overlaps for all unordered pairs.
+        // This ensures collision events fire for:
+        //   - dynamic vs static
+        //   - dynamic vs ghost
+        //   - ghost vs ghost
+        //   - static vs ghost
+        // (Resolution is still only applied when at least one body is dynamic,
+        //  and never when either body is a ghost.)
         for (let i = 0; i < this._bodies.length; i++) {
             const a = this._bodies[i];
-            if (a.type !== "dynamic") continue;
-
-            for (let j = 0; j < this._bodies.length; j++) {
-                if (i === j) continue;
+            for (let j = i + 1; j < this._bodies.length; j++) {
                 const b = this._bodies[j];
 
+                // Static-static overlaps are usually irrelevant and can be costly
+                // to check in large scenes.
+                if (a.type === "static" && b.type === "static") continue;
+
                 const hit = this._detectCollision(a, b);
-                if (hit) this._resolveCollision(a, b, hit);
+                if (!hit) continue;
+
+                // ── Emit collision event (once per unique pair per frame) ─────
+                this._emit("collision", { entities: [a.entity, b.entity] });
+                this._dispatchCollisionCustomEvent(a.entity, b.entity);
+
+                // ── Skip resolution when either participant is a ghost ───────
+                if (a.type === "ghost" || b.type === "ghost") continue;
+
+                // ── Apply resolution if possible (at least one dynamic) ───────
+                if (a.type === "dynamic") {
+                    this._resolveCollision(a, b, hit);
+                } else if (b.type === "dynamic") {
+                    this._resolveCollision(b, a, { normal: hit.normal.clone().negate(), depth: hit.depth });
+                }
             }
         }
     }
 
+    _dispatchCollisionCustomEvent(entityA, entityB) {
+        if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") return;
+        if (typeof CustomEvent === "undefined") return;
+
+        const detail = this._buildCollisionDetail(entityA, entityB);
+        window.dispatchEvent(new CustomEvent(this.collisionCustomEventName, { detail }));
+    }
+
+    _buildCollisionDetail(entityA, entityB) {
+        const out = {};
+        const keyA = this._uniqueCollisionKey(out, entityA?.name ?? "EntityA");
+        const keyB = this._uniqueCollisionKey(out, entityB?.name ?? "EntityB");
+        out[keyA] = entityA;
+        out[keyB] = entityB;
+        return out;
+    }
+
+    _uniqueCollisionKey(target, base) {
+        if (!(base in target)) return base;
+        let i = 2;
+        while (`${base}#${i}` in target) i++;
+        return `${base}#${i}`;
+    }
+
     // ── Collision detection ───────────────────────────────────────────────────
-    // All methods return { normal: THREE.Vector3, depth: number } or null.
-    // `normal` always points FROM b TOWARD a (push-out direction for a).
 
     _detectCollision(a, b) {
         const posA = a.entity.entity.position;
@@ -232,33 +344,29 @@ export default class PhysicsManager extends CobblePlugin {
         }
 
         if (a.shape === "sphere" && b.shape === "box") {
-            // Sphere vs OBB — handles slopes (rotated static boxes) correctly.
             return this._collideSphereVsOBB(posA, a.size, posB, b.size, rotB);
         }
 
         if (a.shape === "box" && b.shape === "sphere") {
             const hit = this._collideSphereVsOBB(posB, b.size, posA, a.size, rotA);
-            if (hit) hit.normal.negate(); // flip: normal must point from b toward a
+            if (hit) hit.normal.negate();
             return hit;
         }
 
         return null;
     }
 
-    /** Sphere vs Sphere */
     _collideSphereVsSphere(posA, rA, posB, rB) {
         const delta = new THREE.Vector3().subVectors(posA, posB);
         const dist  = delta.length();
         const sum   = rA + rB;
         if (dist >= sum) return null;
-
         return {
             normal: dist > 0.0001 ? delta.normalize() : new THREE.Vector3(0, 1, 0),
             depth:  sum - dist,
         };
     }
 
-    /** AABB Box vs AABB Box — fast axis-aligned overlap test */
     _collideBoxVsBox(posA, halfA, posB, halfB) {
         const dx = posA.x - posB.x;
         const dy = posA.y - posB.y;
@@ -266,44 +374,25 @@ export default class PhysicsManager extends CobblePlugin {
         const ox = halfA.x + halfB.x - Math.abs(dx);
         const oy = halfA.y + halfB.y - Math.abs(dy);
         const oz = halfA.z + halfB.z - Math.abs(dz);
-
         if (ox <= 0 || oy <= 0 || oz <= 0) return null;
-
-        // Resolve on the axis of minimum penetration
         if (oy <= ox && oy <= oz) return { normal: new THREE.Vector3(0, Math.sign(dy), 0), depth: oy };
         if (ox <= oy && ox <= oz) return { normal: new THREE.Vector3(Math.sign(dx), 0, 0), depth: ox };
         return { normal: new THREE.Vector3(0, 0, Math.sign(dz)), depth: oz };
     }
 
-    /**
-     * Sphere vs Oriented Bounding Box (OBB).
-     * Works for any rotation — a 45° tilted box acts as a slope.
-     * The sphere bounces off the slope's actual surface normal.
-     */
     _collideSphereVsOBB(posS, rS, posB, halfB, quatB) {
-        // Project sphere center into the box's local space
         const invQuat = quatB.clone().invert();
         const localS  = posS.clone().sub(posB).applyQuaternion(invQuat);
-
-        // Closest point on the box surface to the sphere center (in local space)
         const closest = new THREE.Vector3(
             Math.max(-halfB.x, Math.min(localS.x, halfB.x)),
             Math.max(-halfB.y, Math.min(localS.y, halfB.y)),
             Math.max(-halfB.z, Math.min(localS.z, halfB.z)),
         );
-
         const localDelta = new THREE.Vector3().subVectors(localS, closest);
         const dist = localDelta.length();
         if (dist >= rS) return null;
-
-        // Compute collision normal in local space, then rotate back to world space
-        const localNormal = dist > 0.0001
-            ? localDelta.normalize()
-            : new THREE.Vector3(0, 1, 0);
-
-        const worldNormal = localNormal.clone().applyQuaternion(quatB);
-
-        return { normal: worldNormal, depth: rS - dist };
+        const localNormal = dist > 0.0001 ? localDelta.normalize() : new THREE.Vector3(0, 1, 0);
+        return { normal: localNormal.clone().applyQuaternion(quatB), depth: rS - dist };
     }
 
     // ── Collision resolution ──────────────────────────────────────────────────
@@ -318,43 +407,31 @@ export default class PhysicsManager extends CobblePlugin {
         const velA = stateA.velocity;
         const velB = stateB ? stateB.velocity : _ZERO;
 
-        // ── 1. Positional correction (de-penetration) ─────────────────────────
         const invMassA = 1 / cfgA.mass;
         const invMassB = stateB ? 1 / cfgB.mass : 0;
         const totalInvMass = invMassA + invMassB;
 
         if (totalInvMass > 0) {
-            const correction = (depth / totalInvMass) * 0.8; // 0.8 = slop factor
+            const correction = (depth / totalInvMass) * 0.8;
             a.entity.entity.position.addScaledVector(normal,  correction * invMassA);
             if (stateB) b.entity.entity.position.addScaledVector(normal, -correction * invMassB);
         }
 
-        // ── 2. Check separation — skip if already moving apart ────────────────
-        const relVel          = new THREE.Vector3().subVectors(velA, velB);
-        const velAlongNormal  = relVel.dot(normal);
+        const relVel         = new THREE.Vector3().subVectors(velA, velB);
+        const velAlongNormal = relVel.dot(normal);
         if (velAlongNormal > 0) return;
 
-        // ── 3. Blend material properties ─────────────────────────────────────
-        // Restitution: take the higher value (more energetic material wins)
-        const restitution = Math.max(cfgA.restitution, cfgB.restitution);
-
-        // Friction: average the two surfaces
-        const friction = (cfgA.friction + (cfgB.friction ?? this.defaults.friction)) / 2;
-
-        // Stickiness: average; amplifies friction and kills bounce
-        const stickiness = ((cfgA.stickiness ?? 0) + (cfgB.stickiness ?? 0)) / 2;
-
-        // Stickiness reduces effective bounce
+        const restitution         = Math.max(cfgA.restitution, cfgB.restitution);
+        const friction            = (cfgA.friction + (cfgB.friction ?? this.defaults.friction)) / 2;
+        const stickiness          = ((cfgA.stickiness ?? 0) + (cfgB.stickiness ?? 0)) / 2;
         const effectiveRestitution = restitution * (1 - Math.min(stickiness * 2, 1));
 
-        // ── 4. Normal impulse (bounce) ────────────────────────────────────────
         const impulseMag = -(1 + effectiveRestitution) * velAlongNormal / totalInvMass;
         const impulse    = normal.clone().multiplyScalar(impulseMag);
 
         velA.addScaledVector(impulse,  invMassA);
         if (stateB) stateB.velocity.addScaledVector(impulse, -invMassB);
 
-        // ── 5. Tangential impulse (friction) ─────────────────────────────────
         const relVelPost    = new THREE.Vector3().subVectors(velA, stateB ? stateB.velocity : _ZERO);
         const tangentRaw    = relVelPost.clone().addScaledVector(normal, -relVelPost.dot(normal));
         const tangentLength = tangentRaw.length();
@@ -363,22 +440,17 @@ export default class PhysicsManager extends CobblePlugin {
             return;
         }
 
-        const tangent = tangentRaw.divideScalar(tangentLength);
-        const velAlongTangent = relVelPost.dot(tangent);
-
-        // Stickiness multiplies effective friction coefficient
-        const effectiveFriction = Math.min(friction * (1 + stickiness * 4), 1);
-
-        // Clamp friction impulse to Coulomb's law: |Ft| ≤ μ|Fn|
-        const maxFriction     = Math.abs(impulseMag) * effectiveFriction;
-        const rawFriction     = -velAlongTangent / totalInvMass;
-        const clampedFriction = Math.max(-maxFriction, Math.min(rawFriction, maxFriction));
+        const tangent             = tangentRaw.divideScalar(tangentLength);
+        const velAlongTangent     = relVelPost.dot(tangent);
+        const effectiveFriction   = Math.min(friction * (1 + stickiness * 4), 1);
+        const maxFriction         = Math.abs(impulseMag) * effectiveFriction;
+        const rawFriction         = -velAlongTangent / totalInvMass;
+        const clampedFriction     = Math.max(-maxFriction, Math.min(rawFriction, maxFriction));
 
         const frictionImpulse = tangent.multiplyScalar(clampedFriction);
         velA.addScaledVector(frictionImpulse,  invMassA);
         if (stateB) stateB.velocity.addScaledVector(frictionImpulse, -invMassB);
 
-        // ── 6. Wake up sleeping bodies ────────────────────────────────────────
         stateA.isSleeping = false;
         if (stateB) stateB.isSleeping = false;
 
@@ -387,65 +459,47 @@ export default class PhysicsManager extends CobblePlugin {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    /** Merge PhysicsManager.defaults with any per-entity overrides. */
     _resolveConfig(entity) {
-        const overrides = entity.physics?.config ?? {};
-        return { ...this.defaults, ...overrides };
+        return { ...this.defaults, ...(entity.physics?.config ?? {}) };
     }
 
-    /** Auto-derive collision size from the entity's geometry + visual scale. */
     _deriveSize(entity, shape) {
         const scale = entity._visual ? entity._visual.scale.clone() : new THREE.Vector3(1, 1, 1);
-
         if (entity.geometry) {
             entity.geometry.computeBoundingBox();
             entity.geometry.computeBoundingSphere();
-
             if (shape === "sphere") {
                 return (entity.geometry.boundingSphere?.radius ?? 0.5) *
                     Math.max(scale.x, scale.y, scale.z);
             }
-
             const box = entity.geometry.boundingBox;
             if (box) {
                 const half = new THREE.Vector3().subVectors(box.max, box.min).multiplyScalar(0.5);
                 return new THREE.Vector3(half.x * scale.x, half.y * scale.y, half.z * scale.z);
             }
         }
-
-        return shape === "sphere"
-            ? 0.5
-            : new THREE.Vector3(0.5, 0.5, 0.5);
+        return shape === "sphere" ? 0.5 : new THREE.Vector3(0.5, 0.5, 0.5);
     }
 
-    /** Set isGrounded if the collision normal is mostly upward. */
     _updateGroundFlags(body, normal) {
-        if (normal.y > 0.5) {
-            body.entity.physics.state.isGrounded  = true;
-        }
+        if (normal.y > 0.5) body.entity.physics.state.isGrounded = true;
         body.entity.physics.state.isColliding = true;
     }
 
     // ── Debug visualisation ───────────────────────────────────────────────────
     //
-    //  Each registered body gets two overlays added directly to the scene:
-    //
-    //    outline   — EdgeGeometry wireframe showing the exact collision shape.
-    //                Color encodes body state at a glance:
-    //                  Blue   (#2277ff) — static collider
-    //                  Green  (#22ff66) — dynamic, awake
-    //                  Gray   (#888888) — dynamic, sleeping
-    //                  Red    (#ff3300) — dynamic, currently colliding
-    //
-    //    velArrow  — ArrowHelper showing velocity direction + magnitude.
-    //                Only shown on dynamic bodies; hidden when sleeping.
+    //  Outline colors:
+    //    Blue   (#2277ff) — static
+    //    Cyan   (#00eeff) — ghost  ← new
+    //    Green  (#22ff66) — dynamic, awake
+    //    Gray   (#888888) — dynamic, sleeping
+    //    Red    (#ff3300) — dynamic, colliding
 
     _createDebugMesh(body) {
-        if (!this.parent?.scene) return; // engine not attached yet; will retry in _syncDebugMeshes
+        if (!this.parent?.scene) return;
 
         const { shape, size, type } = body;
 
-        // ── Collision outline ─────────────────────────────────────────────────
         let outlineGeo;
         if (shape === "sphere") {
             outlineGeo = new THREE.SphereGeometry(size, 16, 8);
@@ -453,21 +507,27 @@ export default class PhysicsManager extends CobblePlugin {
             outlineGeo = new THREE.BoxGeometry(size.x * 2, size.y * 2, size.z * 2);
         }
 
-        const outlineMat  = new THREE.LineBasicMaterial({ color: _DEBUG_COLORS.static, depthTest: false, transparent: true, opacity: 0.85 });
-        const outline     = new THREE.LineSegments(new THREE.EdgesGeometry(outlineGeo), outlineMat);
-        outline.renderOrder = 999; // always draw on top
+        // Ghost outlines are dashed/faded to visually distinguish them
+        const isGhost = type === "ghost";
+        const outlineMat = new THREE.LineBasicMaterial({
+            color:       isGhost ? _DEBUG_COLORS.ghost : _DEBUG_COLORS.static,
+            depthTest:   false,
+            transparent: true,
+            opacity:     isGhost ? 0.45 : 0.85,
+        });
+        const outline = new THREE.LineSegments(new THREE.EdgesGeometry(outlineGeo), outlineMat);
+        outline.renderOrder = 999;
         this.parent.scene.add(outline);
 
-        // ── Velocity arrow (dynamic bodies only) ─────────────────────────────
         let velArrow = null;
         if (type === "dynamic") {
             velArrow = new THREE.ArrowHelper(
-                new THREE.Vector3(0, 1, 0), // direction placeholder
-                new THREE.Vector3(),         // origin placeholder
-                1,                           // length placeholder
+                new THREE.Vector3(0, 1, 0),
+                new THREE.Vector3(),
+                1,
                 _DEBUG_COLORS.arrow,
-                0.2,                         // head length
-                0.1,                         // head width
+                0.2,
+                0.1,
             );
             velArrow.renderOrder = 999;
             this.parent.scene.add(velArrow);
@@ -479,29 +539,20 @@ export default class PhysicsManager extends CobblePlugin {
     _destroyDebugMesh(body) {
         const dbg = this._debugMeshes.get(body);
         if (!dbg || !this.parent?.scene) return;
-
         this.parent.scene.remove(dbg.outline);
         dbg.outline.geometry.dispose();
         dbg.outline.material.dispose();
-
-        if (dbg.velArrow) {
-            this.parent.scene.remove(dbg.velArrow);
-        }
-
+        if (dbg.velArrow) this.parent.scene.remove(dbg.velArrow);
         this._debugMeshes.delete(body);
     }
 
     _destroyAllDebugMeshes() {
-        for (const body of this._debugMeshes.keys()) {
-            this._destroyDebugMesh(body);
-        }
+        for (const body of this._debugMeshes.keys()) this._destroyDebugMesh(body);
     }
 
     _syncDebugMeshes() {
         for (const body of this._bodies) {
-            // Lazily create mesh if engine wasn't ready during addBody()
             if (!this._debugMeshes.has(body)) this._createDebugMesh(body);
-
             const dbg = this._debugMeshes.get(body);
             if (!dbg) continue;
 
@@ -509,13 +560,14 @@ export default class PhysicsManager extends CobblePlugin {
             const pos = entity.entity.position;
             const rot = entity.entity.quaternion;
 
-            // ── Sync outline transform ────────────────────────────────────────
             dbg.outline.position.copy(pos);
             dbg.outline.quaternion.copy(rot);
 
-            // ── Pick outline color based on current state ─────────────────────
+            // Ghost outlines always stay cyan; other types change by state
             let color;
-            if (type === "static") {
+            if (type === "ghost") {
+                color = _DEBUG_COLORS.ghost;
+            } else if (type === "static") {
                 color = _DEBUG_COLORS.static;
             } else {
                 const state = entity.physics?.state;
@@ -525,17 +577,15 @@ export default class PhysicsManager extends CobblePlugin {
             }
             dbg.outline.material.color.setHex(color);
 
-            // ── Sync velocity arrow ───────────────────────────────────────────
             if (dbg.velArrow && type === "dynamic") {
-                const vel = entity.physics?.state?.velocity ?? _ZERO;
+                const vel   = entity.physics?.state?.velocity ?? _ZERO;
                 const speed = vel.length();
-
                 if (speed > 0.01) {
                     dbg.velArrow.visible = true;
                     dbg.velArrow.position.copy(pos);
                     dbg.velArrow.setDirection(vel.clone().normalize());
                     dbg.velArrow.setLength(
-                        Math.min(speed, 10),  // cap visual length at 10 units
+                        Math.min(speed, 10),
                         Math.min(speed * 0.2, 0.5),
                         Math.min(speed * 0.1, 0.25),
                     );
@@ -545,7 +595,7 @@ export default class PhysicsManager extends CobblePlugin {
             }
         }
     }
-};
+}
 
 // Reusable zero vector — never modify this
 const _ZERO = Object.freeze(new THREE.Vector3(0, 0, 0));
@@ -553,9 +603,9 @@ const _ZERO = Object.freeze(new THREE.Vector3(0, 0, 0));
 // ── Debug overlay colors ──────────────────────────────────────────────────────
 const _DEBUG_COLORS = {
     static:    0x2277ff, // blue   — immovable collider
+    ghost:     0x00eeff, // cyan   — ghost / trigger volume
     dynamic:   0x22ff66, // green  — awake dynamic body
-    sleeping:  0x888888, // gray   — sleeping (velocity below threshold)
+    sleeping:  0x888888, // gray   — sleeping
     colliding: 0xff3300, // red    — actively colliding this frame
     arrow:     0xffee00, // yellow — velocity arrow
-
-}
+};

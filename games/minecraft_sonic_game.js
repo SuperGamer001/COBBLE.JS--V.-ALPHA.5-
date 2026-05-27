@@ -6,6 +6,7 @@ import EntityManager from "../COBBLE/plugins/entityManager.js";
 import Camera from "../COBBLE/plugins/camera.js";
 import PhysicsManager from "../COBBLE/plugins/physicsManager.js";
 
+
 // ============================================================
 //  Engine + Plugin Setup
 // ============================================================
@@ -24,11 +25,23 @@ physics.defaults.restitution = 0; // Prevent bouncing
 physics.defaults.friction = 0; // Allow sliding
 
 
+
+// ============================================================
+// Global Variables
+// ============================================================
+
+const KEYS = {}; // Keep track of which keys are currently held down
+let PRESSED = {}; // Keep track of which keys were just pressed (resets every frame)
+const RINGS = []; // Store ring entities for collision detection and management
+
+
+
 // ============================================================
 //  Character Configs
 // ============================================================
 
 const SONIC = {
+    name: "Sonic",
     hasEars: true,
     hasSocks: true,
     handSize: 0.15,
@@ -81,6 +94,7 @@ const SONIC = {
 };
 
 const TAILS = {
+    name: "Tails",
     hasEars: false,
     hasSocks: true,
     handSize: 0.13,
@@ -163,6 +177,7 @@ const TAILS = {
 };
 
 const KNUCKLES = {
+    names: "Knuckles",
     hasEars: false,
     hasSocks: true,
     handSize: 0.2,
@@ -219,6 +234,7 @@ const KNUCKLES = {
 };
 
 const AMY = {
+    name: "Amy",
     hasEars: true,
     hasSocks: false,
     handSize: 0.13,
@@ -295,6 +311,7 @@ const AMY = {
 };
 
 const SHADOW = {
+    name: "Shadow",
     hasEars: true,
     hasSocks: true,
     handSize: 0.15,
@@ -371,14 +388,15 @@ const SHADOW = {
 
 function createSonicCharacter(config) {
     const mat = (color) => new THREE.MeshStandardMaterial({ color });
-    const box = () => entityManager.addBox();
+    const box = () => entityManager.addBox(config.name);
     const h = config.head;
 
     // Hitbox
-    const player = box();
+    const player = box(config.name ?? "sonic");
     player._visual.material.transparent = true;
     player._visual.material.opacity = 0;
     player.setScale({ x: 0.5, y: 1.8, z: 0.5 });
+    console.log("Created player hitbox:", player);
 
     // Torso
     const torso = box();
@@ -632,6 +650,22 @@ function applyIdleAnimation(character, swing) {
     b.rightAnkle.entity.rotation.set(0, 0, 0);
 }
 
+function applyTappingFootAnimation(character, swing, swing2) {
+    const b = character.bones;
+    b.neck.entity.rotation.set(0, -0.2, -0.2);
+    b.torso.entity.rotation.set(0, 0, 0);
+    b.leftShoulder.entity.rotation.set(0, 0, swing * 0.2 - 0.6);
+    b.rightShoulder.entity.rotation.set(0, 0, -swing * 0.2 + 0.6);
+    b.leftElbow.entity.rotation.set(0, 0, 1);
+    b.rightElbow.entity.rotation.set(0, 0, -1);
+    b.leftHip.entity.rotation.set(0, -0.7, 0);
+    b.leftKnee.entity.rotation.set(0, 0, 0);
+    b.leftAnkle.entity.rotation.set(swing2 * 8 - 0.4, 0, 0);
+    b.rightHip.entity.rotation.set(0, 0, 0);
+    b.rightKnee.entity.rotation.set(0, 0, 0);
+    b.rightAnkle.entity.rotation.set(0, 0, 0);
+}
+
 function applyWalkAnimation(character, swing, swing2) {
     const b = character.bones;
     b.leftShoulder.entity.rotation.set(0, 0, -0.5);
@@ -639,16 +673,16 @@ function applyWalkAnimation(character, swing, swing2) {
     b.torso.entity.rotation.set(0, 0, 0);
     
     b.neck.entity.rotation.set(0, Math.sin(swing) * 0.1, 0);
-    b.leftShoulder.entity.rotation.x  =  swing;
-    b.rightShoulder.entity.rotation.x = -swing;
-    b.leftElbow.entity.rotation.x     =  swing - 1;
-    b.rightElbow.entity.rotation.x    = -swing - 1;
-    b.leftHip.entity.rotation.x       = -swing * 2;
-    b.leftKnee.entity.rotation.x      = (-swing2 * 2.5) + 1.4;
-    b.leftAnkle.entity.rotation.x     = -swing;
-    b.rightHip.entity.rotation.x      =  swing * 2;
-    b.rightKnee.entity.rotation.x     =  (swing2 * 2.5) + 1.4;
-    b.rightAnkle.entity.rotation.x    =  swing;
+    b.leftShoulder.entity.rotation.set(swing, 0, -0.5);
+    b.rightShoulder.entity.rotation.set(-swing, 0, 0.5);
+    b.leftElbow.entity.rotation.set(swing - 1, 0, 0);
+    b.rightElbow.entity.rotation.set(-swing - 1, 0, 0);
+    b.leftHip.entity.rotation.set(-swing * 2, 0, 0);
+    b.leftKnee.entity.rotation.set((-swing2 * 2.5) + 1.4, 0, 0);
+    b.leftAnkle.entity.rotation.set(-swing, 0, 0);
+    b.rightHip.entity.rotation.set(swing * 2, 0, 0);
+    b.rightKnee.entity.rotation.set((swing2 * 2.5) + 1.4, 0, 0);
+    b.rightAnkle.entity.rotation.set(swing, 0, 0);
 }
 
 function applyRunAnimation(character, swing, swing2) {
@@ -669,12 +703,12 @@ function applyRunAnimation(character, swing, swing2) {
     b.rightElbow.entity.rotation.set(0, 0, 0);
 
     // Legs: much higher amplitude for that fast wheel-like cycling motion
-    b.leftHip.entity.rotation.x       = -swing * 2.5 - 0.7;
-    b.leftKnee.entity.rotation.x      = (-swing2 * 2.5) + 1.4;
-    b.leftAnkle.entity.rotation.x     = -swing;
-    b.rightHip.entity.rotation.x      =  swing * 2.5 - 0.7;
-    b.rightKnee.entity.rotation.x     =  (swing2 * 2.5) + 1.4;
-    b.rightAnkle.entity.rotation.x    =  swing;
+    b.leftHip.entity.rotation.set(-swing * 2.5 - 0.7, 0, 0);
+    b.leftKnee.entity.rotation.set((-swing2 * 2.5) + 1.4, 0, 0);
+    b.leftAnkle.entity.rotation.set(swing, 0, 0);
+    b.rightHip.entity.rotation.set(swing * 2.5 - 0.7, 0, 0);
+    b.rightKnee.entity.rotation.set((swing2 * 2.5) + 1.4, 0, 0);
+    b.rightAnkle.entity.rotation.set(swing, 0, 0);
 
 }
 
@@ -825,19 +859,80 @@ function createGround({
     return ground;
 }
 
+function createRing({ px = 0, py = 0, pz = 0, color = 0xffff00 } = {}) {
+    const ringCollision = entityManager.addBox("ring"+Math.floor(Math.random() * 1000));
+    ringCollision.setScale({ x: 0.8, y: 0.8, z: 0.4 });
+    ringCollision.entity.position.set(px, py, pz);
+    let clearMat = (color) => new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.0 });
+    ringCollision.applyMaterial(clearMat(color));
+    physics.addBody(ringCollision, { type: "ghost", shape: "box" });
+
+
+    let mat = (color) => new THREE.MeshStandardMaterial({ color });
+
+    // Pieces to the square ring
+    const top = entityManager.addBox();
+    top.setScale({ x: 0.8, y: 0.2, z: 0.4 });
+    top.applyMaterial(mat(color));
+    top.entity.position.y = 0.3;
+    ringCollision.attachEntity(top);
+
+    const bottom = entityManager.addBox();
+    bottom.setScale({ x: 0.8, y: 0.2, z: 0.4 });
+    bottom.applyMaterial(mat(color));
+    bottom.entity.position.y = -0.3;
+    ringCollision.attachEntity(bottom);
+
+    const left = entityManager.addBox();
+    left.setScale({ x: 0.2, y: 0.8, z: 0.4 });
+    left.applyMaterial(mat(color));
+    left.entity.position.x = -0.3;
+    ringCollision.attachEntity(left);
+
+    const right = entityManager.addBox();
+    right.setScale({ x: 0.2, y: 0.8, z: 0.4 });
+    right.applyMaterial(mat(color));
+    right.entity.position.x = 0.3;
+    ringCollision.attachEntity(right);
+
+
+
+    RINGS.push(ringCollision);
+    return ringCollision;
+}
+
 createGround({ py: -0.5, sz: 20, color: 0x228822 }); // main ground plane
-createGround({sx: 500, sz: 500, py: -2, color: 0x888888 }); // back wall
+// createGround({sx: 500, sz: 500, py: -2, color: 0x888888 });
 
-createGround({ px: -10, py: 6, sy: 10, color: 0x228822 }); // left wall
-createGround({ px:  10, py: 6, sy: 10, color: 0x228822 }); // right wall
+createGround({ px: -10, py: 3, sy: 10, color: 0x228822 });
+createGround({ px:  10, py: 0, sy: 10, color: 0x228822 }); 
+
+createGround({ px: 17, py: -7, pz: 20, sx: 20, sy: 40, sz: 20, color: 0x228822 });
 
 
-// ============================================================
-// Global Variables
-// ============================================================
+// createRing({ px: 14, py: 6, pz: 0 });
+// createRing({ px: 13, py: 6, pz: 0 });
+// createRing({ px: 12, py: 6, pz: 0 });
+// createRing({ px: 11, py: 6, pz: 0 });
+// createRing({ px: 10, py: 6, pz: 0 });
+// createRing({ px: 9, py: 6, pz: 0 });
+// createRing({ px: 8, py: 6, pz: 0 });
+// createRing({ px: 7, py: 6, pz: 0 });
+// createRing({ px: 6, py: 6, pz: 0 });
 
-const KEYS = {}; // Keep track of which keys are currently held down
-let PRESSED = {}; // Keep track of which keys were just pressed (resets every frame)
+for (let i = 0; i < 5; i++) {
+    for (let j = 0; j < 2; j++) {
+        createRing({ px: 14 - (i * 2), py: 6, pz: -3 + (j * 4) });
+    }
+}
+
+for (let i = 0; i < 5; i++) {
+    for (let j = 0; j < 5; j++) {
+        createRing({ px: 9 + (i * 4), py: 14, pz: 12 + (j * 4) });
+    }
+}
+
+
 
 
 // ============================================================
@@ -847,7 +942,6 @@ let PRESSED = {}; // Keep track of which keys were just pressed (resets every fr
 
 const sonic = createSonicCharacter(SONIC);
 sonic.entity.position.set(0, 5, 0);
-sonic.entity.rotation.y = Math.PI; // Start facing forward (towards the camera)
 physics.addBody(sonic, { type: "dynamic", shape: "box", mass: 1});
 
 const camera = new Camera(null, sonic.entity);
@@ -857,7 +951,9 @@ camera.rotation.set(-0.04834938665190285, 0, 0);
 camera.mode = "Orbit";
 camera.offset.x = 8; // 6.2 for the Title Screen
 camera.offset.y = 5;  // 0.3 for the Title Screen
-camera.orbitAngle = Math.PI; // 0 for the Title Screen, PI for going behind Sonic in gameplay
+camera.orbitAngle = 0; // 0 for the Title Screen, PI for going behind Sonic in gameplay
+await camera.loadSpheremap('../COBBLE/assets/sonic/sky_105_2k.png');
+
 
 
 
@@ -871,15 +967,39 @@ addEventListener("keydown", (e) => {
 addEventListener("keyup", (e) => {
     KEYS[e.key.toLowerCase()] = false;
 });
+addEventListener("cobbleCollision", (e) => {
+    // Check if Sonic is involved in the collision with anything with "box" in its name (our ground entities)
+    const hasSonic = !!e.detail["Sonic"];
+
+    const isRing = Object.keys(e.detail).some(key =>
+        key.toLowerCase().includes("ring")
+    );
+
+    if (hasSonic && isRing) {
+        console.log("Sonic collected a ring!");
+        // Find the ring entity involved in the collision and remove it
+        for (const key in e.detail) {
+            if (key.toLowerCase().includes("ring")) {
+                const ringEntity = e.detail[key];
+                physics.removeBody(ringEntity);
+                entityManager.removeEntity(ringEntity);
+                // Optionally, you could also add some visual or sound effect here
+                break;
+            }
+        }
+    }
+})
+
 
 let walkPhase = 0;
 let lastFrameTime = performance.now() / 1000;
+let idleTime = 0;
 
 // ── Constants ───────────────────────────────────────────────
 const TOP_SPEED     = 18;   // max horizontal speed (units/s)
 const ACCEL_FORCE   = 0.18; // base impulse per frame while accelerating
 const TURN_PENALTY  = 0.5;  // extra brake impulse when pressing against current velocity
-const BRAKE_FACTOR  = 0.18; // deceleration multiplier when no key held
+const BRAKE_FACTOR  = 0.9; // deceleration multiplier when no key held
 const STOP_THRESH   = 0.1; // speed below which we hard-stop
 const ROT_LERP      = 0.2; // how fast Sonic rotates to face his velocity (0–1)
 // ────────────────────────────────────────────────────────────
@@ -977,18 +1097,33 @@ cobble.nextFrame = () => {
     // ── Walk phase & animations ──────────────────────────────
     walkPhase += dt * hSpeed * 1.5;
     let breathing = Math.sin((cobble.frame / 120) * 8) * 0.05; // subtle up/down motion to make idle pose less static
+    let quickBreathing = Math.sin((cobble.frame / 50) * 8) * 0.05; // faster breathing for high-speed running
 
     if (sonic.character.jumping) {
         applyBallAnimation(sonic, Math.min(hSpeed, 15));
+        idleTime = 0;
     } else if (hSpeed > 15) {
         applyRunAnimation(sonic, -Math.sin(walkPhase) * 0.5, Math.cos(walkPhase) * 0.5);
+        idleTime = 0;
     } else if (hSpeed > 0.05) {
         applyWalkAnimation(sonic, -Math.sin(walkPhase) * 0.5, Math.cos(walkPhase) * 0.5);
+        idleTime = 0;
     } else {
         applyIdleAnimation(sonic, breathing);
+        // After a short delay of idleness, add a tapping foot animation to make it more lively
+        // Round dt to the nearest hundredth to prevent jitter from very small frame time variations
+        idleTime += dt;
+        if (idleTime > 5) {
+            applyTappingFootAnimation(sonic, breathing, quickBreathing);
+        }
     }
 
     blink(sonic, dt);
+
+    for (let ring of RINGS) {
+        // Rotate rings for visual flair
+        ring.entity.rotation.y += dt * 2;
+    }
 
     PRESSED = {};
 };

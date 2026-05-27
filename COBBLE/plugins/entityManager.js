@@ -12,9 +12,8 @@ export default class EntityManager extends CobblePlugin {
         this.entities = [];
     }
 
-    addBox() {
-        // Placeholder for adding a box entity to the scene.
-        let entity = new Entity();
+    addBox(name = "Box"+Math.floor(Math.random() * 1000)) {
+        let entity = new Entity(name);
         const geometry = new THREE.BoxGeometry(1, 1, 1);
         
         entity.applyMesh(geometry);
@@ -27,5 +26,11 @@ export default class EntityManager extends CobblePlugin {
     attachEntity(entity) {
         this.parent.scene.add(entity.entity);
         this.entities.push(entity);
+    }
+
+    removeEntity(entity) {
+        this.parent.scene.remove(entity.entity);
+        const index = this.entities.indexOf(entity);
+        this.entities.splice(index, 1);
     }
 }

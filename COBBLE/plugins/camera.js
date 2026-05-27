@@ -23,13 +23,17 @@ export default class Camera extends CobblePlugin {
         this.pitch = 0;             // Up/down look angle in radians
         this.yaw = 0;               // Left/right look angle in radians
 
+        // Skybox — cubemap takes priority over spheremap when both are set
+        this.cubemap = null;        // THREE.CubeTexture  — set via loadCubemap()
+        this.spheremap = null;      // THREE.Texture (equirectangular) — set via loadSpheremap()
+
         this._mode = "Follow";
     }
 
     // Called by the engine when the plugin is registered — parent is available here
     applyToEngine(engine) {
         super.applyToEngine(engine);
-        this._checkInputManager(); // Re-run the check now that parent exists
+        this._checkInputManager();
     }
 
     get mode() {
@@ -57,8 +61,71 @@ export default class Camera extends CobblePlugin {
         return this.camera.rotation;
     }
 
+    /**
+     * Load a cubemap skybox from six face images.
+     * @param {string[]} urls - Six URLs in order: [+X, -X, +Y, -Y, +Z, -Z]
+     *                          i.e. [right, left, top, bottom, front, back]
+     * @returns {Promise<THREE.CubeTexture>}
+     *
+     * @example
+     * await camera.loadCubemap([
+     *   'sky/px.png', 'sky/nx.png',
+     *   'sky/py.png', 'sky/ny.png',
+     *   'sky/pz.png', 'sky/nz.png',
+     * ]);
+     */
+    loadCubemap(urls) {
+        return new Promise((resolve, reject) => {
+            const loader = new THREE.CubeTextureLoader();
+            loader.load(
+                urls,
+                (texture) => {
+                    this.cubemap = texture;
+                    resolve(texture);
+                },
+                undefined,
+                (err) => {
+                    console.error("Camera: failed to load cubemap", err);
+                    reject(err);
+                }
+            );
+        });
+    }
+
+    /**
+     * Load a spheremap (equirectangular panorama) skybox from a single image.
+     * @param {string} url - Path to the equirectangular panorama image.
+     * @returns {Promise<THREE.Texture>}
+     *
+     * @example
+     * await camera.loadSpheremap('sky/panorama.jpg');
+     */
+    loadSpheremap(url) {
+        return new Promise((resolve, reject) => {
+            const loader = new THREE.TextureLoader();
+            loader.load(
+                url,
+                (texture) => {
+                    texture.mapping = THREE.EquirectangularReflectionMapping;
+                    this.spheremap = texture;
+                    resolve(texture);
+                },
+                undefined,
+                (err) => {
+                    console.error("Camera: failed to load spheremap", err);
+                    reject(err);
+                }
+            );
+        });
+    }
+
+    /** Remove whichever skybox is currently active and clear the scene background. */
+    clearSkybox() {
+        this.cubemap = null;
+        this.spheremap = null;
+    }
+
     _checkInputManager() {
-        // If parent isn't available yet (e.g. set during constructor), skip silently
         if (!this.parent) return;
 
         const requiresInput = ["Orbit", "FirstPerson"];
@@ -108,10 +175,7 @@ export default class Camera extends CobblePlugin {
         else if (this.mode === "FirstPerson") {
             if (!this.target) return;
 
-            // Position at target + eye offset
             this.camera.position.copy(this.target.position).add(this.offset);
-
-            // YXZ order is standard for FPS — yaw first, then pitch, no roll
             this.camera.rotation.set(this.pitch, this.yaw, 0, "YXZ");
         }
     }
@@ -122,7 +186,7 @@ export default class Camera extends CobblePlugin {
         const size = new THREE.Vector2();
         renderer.getSize(size);
 
-        const viewportWidth = Math.max(1, Math.floor(size.x * (this.canvasSize.width / 100)));
+        const viewportWidth  = Math.max(1, Math.floor(size.x * (this.canvasSize.width  / 100)));
         const viewportHeight = Math.max(1, Math.floor(size.y * (this.canvasSize.height / 100)));
         const viewportX = Math.floor(size.x * (this.canvasOffset.x / 100));
         const viewportY = Math.floor(size.y * (this.canvasOffset.y / 100));
@@ -130,10 +194,23 @@ export default class Camera extends CobblePlugin {
         this.camera.aspect = viewportWidth / viewportHeight;
         this.camera.updateProjectionMatrix();
 
+        // Apply this camera's skybox, swapping the scene background temporarily
+        // so multiple cameras with different skies can coexist in the same scene.
+        const previousBackground = scene.background;
+
+        if (this.cubemap) {
+            scene.background = this.cubemap;
+        } else if (this.spheremap) {
+            scene.background = this.spheremap;
+        }
+
         renderer.setScissorTest(true);
         renderer.setViewport(viewportX, viewportY, viewportWidth, viewportHeight);
         renderer.setScissor(viewportX, viewportY, viewportWidth, viewportHeight);
         renderer.clear();
         renderer.render(scene, this.camera);
+
+        // Restore scene background so other cameras/systems aren't affected
+        scene.background = previousBackground;
     }
-}   
+}

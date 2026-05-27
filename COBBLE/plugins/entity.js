@@ -2,9 +2,10 @@ import * as THREE from "three";
 import CobblePlugin from "./plugin.js";
 
 export default class Entity extends CobblePlugin {
-    constructor() {
+    constructor(name = "Entity"+Math.floor(Math.random() * 1000)) {
         super();
         this.pluginName = "Entity";
+        this.name = name;
 
         this.entity = new THREE.Object3D(); // Transform/pivot node — used for position, rotation, parenting
 
