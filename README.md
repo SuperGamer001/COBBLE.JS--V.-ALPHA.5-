@@ -25,4 +25,5 @@ npm install three
 ### How to play
 After you have installed everything you need, open the new folder that your terminal created with VS Code.
 On the bottom right corner, if you installed the Live Server Extention, you should see a "Go Live" button. Press that to start a local server.
+
 <img width="499" height="239" alt="image" src="https://github.com/user-attachments/assets/5323a964-391c-4adb-8072-34b1846e6c32" />
