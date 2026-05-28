@@ -33,7 +33,6 @@ export default class Camera extends CobblePlugin {
     // Called by the engine when the plugin is registered — parent is available here
     applyToEngine(engine) {
         super.applyToEngine(engine);
-        this._checkInputManager();
     }
 
     get mode() {
@@ -42,7 +41,6 @@ export default class Camera extends CobblePlugin {
 
     set mode(value) {
         this._mode = value;
-        this._checkInputManager();
     }
 
     get position() {
@@ -123,21 +121,6 @@ export default class Camera extends CobblePlugin {
     clearSkybox() {
         this.cubemap = null;
         this.spheremap = null;
-    }
-
-    _checkInputManager() {
-        if (!this.parent) return;
-
-        const requiresInput = ["Orbit", "FirstPerson"];
-        if (!requiresInput.includes(this._mode)) return;
-
-        const inputManager = this.parent.findPlugin("Input Manager");
-
-        if (inputManager) {
-            console.log("InputManager Found!");
-        } else {
-            console.warn(`Camera mode "${this._mode}" won't function properly without an Input Manager plugin.`);
-        }
     }
 
     update(dt) {

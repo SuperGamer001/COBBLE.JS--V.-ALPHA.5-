@@ -5,6 +5,7 @@ import Cobble from "../COBBLE/main.js";
 import EntityManager from "../COBBLE/plugins/entityManager.js";
 import Camera from "../COBBLE/plugins/camera.js";
 import PhysicsManager from "../COBBLE/plugins/physicsManager.js";
+import UIManager from "../COBBLE/plugins/UI.js";
 
 
 // ============================================================
@@ -18,6 +19,9 @@ cobble.skyColor = 0x87aaeb; // light blue
 
 const physics = new PhysicsManager();
 cobble.addPlugin(physics);
+
+const ui = new UIManager();
+cobble.addPlugin(ui);
 
 // Change global gravity for everyone
 physics.defaults.gravity.set(0, -20, 0);
@@ -34,6 +38,20 @@ const KEYS = {}; // Keep track of which keys are currently held down
 let PRESSED = {}; // Keep track of which keys were just pressed (resets every frame)
 const RINGS = []; // Store ring entities for collision detection and management
 
+const GAME_STATE = {
+    rings: 0,
+    score: 0,
+    lives: 3,
+    timer: 0,
+    paused: false,
+    levelName: "Green Hills",
+    character: "Sonic",
+    boost: 0,
+    health: 100,
+    maxHealth: 100,
+    debug: false,
+};
+
 
 
 // ============================================================
@@ -42,6 +60,7 @@ const RINGS = []; // Store ring entities for collision detection and management
 
 const SONIC = {
     name: "Sonic",
+    glowingSkin: false,
     hasEars: true,
     hasSocks: true,
     handSize: 0.15,
@@ -63,7 +82,7 @@ const SONIC = {
         brows:   { scale: { x: 0.1,  y: 0.2,  z: 0.1  }, position: { x: 0,      y:  0.1,  z: 0.084 }, rx: -0.1 },
     },
     quills: [
-        { x:  0,    y:  0.14, z: 0.07, rx: -1.1, ry: 0, rz:  0,    sx: 0.25, sy: 0.65, sz: 0.25 },
+        { x:  0,    y:  0.14, z: 0.05, rx: -1.1, ry: 0, rz:  0,    sx: 0.25, sy: 0.65, sz: 0.25 },
         { x: -0.13, y:  0.13, z: 0,    rx: -1.4, ry: 0, rz:  0.4,  sx: 0.25, sy: 0.5,  sz: 0.25 },
         { x:  0.13, y:  0.13, z: 0,    rx: -1.4, ry: 0, rz: -0.4,  sx: 0.25, sy: 0.5,  sz: 0.25 },
         { x:  0,    y: -0.1,  z: 0.02, rx: -1.4, ry: 0, rz:  0,    sx: 0.25, sy: 0.6,  sz: 0.25 },
@@ -93,8 +112,63 @@ const SONIC = {
     },
 };
 
+const SUPER_SONIC = {
+    name: "Sonic",
+    glowingSkin: true,
+    hasEars: true,
+    hasSocks: true,
+    handSize: 0.15,
+    colors: {
+        body:  0xffff00,
+        skin:  0xffcc99,
+        mouth: 0xbb8855,
+        shoes: 0xff0000,
+        eyes:  0xff6666,
+        hands: 0xffffff,
+    },
+    head: {
+        scale:   { x: 0.5,  y: 0.5,  z: 0.25 },
+        muzzle:  { scale: { x: 0.52, y: 0.15, z: 0.1  }, position: { x: 0,    y: -0.18, z: 0.1  } },
+        mouth:   { position: { x: 0.1, y: -0.17, z: 0.101 } },
+        nose:    { position: { x: 0,   y: -0.12, z: 0.09  } },
+        eyes:    { scale: { x: 0.51, y: 0.25, z: 0.1  }, position: { x: 0,      y:  0.01, z: 0.08  } },
+        eyelids: { scale: { x: 0.52, y: 0.25, z: 0.1  }, position: { x: -0.001, y:  0.02, z: 0.08  } },
+        brows:   { scale: { x: 0.1,  y: 0.2,  z: 0.1  }, position: { x: 0,      y:  0.1,  z: 0.084 }, rx: -0.1 },
+    },
+    quills: [
+        { x:  0,    y:  0.14, z: 0.05, rx: -1, ry: 0, rz:  0,    sx: 0.25, sy: 0.65, sz: 0.25 },
+        { x: -0.13, y:  0.13, z: 0,    rx: -1.2, ry: 0, rz:  0.4,  sx: 0.25, sy: 0.5,  sz: 0.25 },
+        { x:  0.13, y:  0.13, z: 0,    rx: -1.2, ry: 0, rz: -0.4,  sx: 0.25, sy: 0.5,  sz: 0.25 },
+        { x:  0,    y: -0.1,  z: 0.02, rx: -1.2, ry: 0, rz:  0,    sx: 0.25, sy: 0.6,  sz: 0.25 },
+        { x: -0.1,  y: -0.05, z: 0,    rx: -1.8,   ry: 0, rz:  0.4,  sx: 0.25, sy: 0.6,  sz: 0.25 },
+        { x:  0.1,  y: -0.05, z: 0,    rx: -1.8,   ry: 0, rz: -0.4,  sx: 0.25, sy: 0.6,  sz: 0.25 },
+    ],
+    stomach: (torso) => {
+        const stomach = entityManager.addBox();
+        stomach.setScale({ x: 0.25, y: 0.35, z: 0.001 });
+        stomach.applyMaterial(new THREE.MeshStandardMaterial({ color: 0xffcc99 }));
+        stomach.entity.position.z = 0.125;
+        torso.attachEntity(stomach);
+    },
+    shoes: (foot, side) => {
+        const strap = entityManager.addBox();
+        strap.setScale({ x: 0.21, y: 0.16, z: 0.1 });
+        strap.applyMaterial(new THREE.MeshStandardMaterial({ color: 0xffffff }));
+        strap.entity.position.y = 0.02;
+        foot.attachEntity(strap);
+
+        const buckle = entityManager.addBox();
+        buckle.setScale({ x: 0.05, y: 0.06, z: 0.12 });
+        buckle.applyMaterial(new THREE.MeshStandardMaterial({ color: 0xffd700 }));
+        buckle.entity.position.y = -0.03;
+        buckle.entity.position.x = side === "left" ? -0.1 : 0.1;
+        foot.attachEntity(buckle);
+    },
+};
+
 const TAILS = {
     name: "Tails",
+    glowingSkin: false,
     hasEars: false,
     hasSocks: true,
     handSize: 0.13,
@@ -178,6 +252,7 @@ const TAILS = {
 
 const KNUCKLES = {
     names: "Knuckles",
+    glowingSkin: false,
     hasEars: false,
     hasSocks: true,
     handSize: 0.2,
@@ -235,6 +310,7 @@ const KNUCKLES = {
 
 const AMY = {
     name: "Amy",
+    glowingSkin: false,
     hasEars: true,
     hasSocks: false,
     handSize: 0.13,
@@ -312,6 +388,7 @@ const AMY = {
 
 const SHADOW = {
     name: "Shadow",
+    glowingSkin: false,
     hasEars: true,
     hasSocks: true,
     handSize: 0.15,
@@ -907,18 +984,14 @@ createGround({ py: -0.5, sz: 20, color: 0x228822 }); // main ground plane
 createGround({ px: -10, py: 3, sy: 10, color: 0x228822 });
 createGround({ px:  10, py: 0, sy: 10, color: 0x228822 }); 
 
-createGround({ px: 17, py: -7, pz: 20, sx: 20, sy: 40, sz: 20, color: 0x228822 });
+createGround({ px: 10, py: -7, pz: 20, sx: 20, sy: 40, sz: 20, color: 0x228822 });
+createGround({ px: 17, py: -7, pz: -20, sx: 20, sy: 40, sz: 20, color: 0x228822 });
+createGround({ px: 17, py: -17, pz: 0, sx: 24, sy: 40, sz: 20, color: 0x228822 });
+createGround({ px: 10, py: -7, pz: 40, sx: 40, sy: 40, sz: 20, color: 0x228822 });
 
 
-// createRing({ px: 14, py: 6, pz: 0 });
-// createRing({ px: 13, py: 6, pz: 0 });
-// createRing({ px: 12, py: 6, pz: 0 });
-// createRing({ px: 11, py: 6, pz: 0 });
-// createRing({ px: 10, py: 6, pz: 0 });
-// createRing({ px: 9, py: 6, pz: 0 });
-// createRing({ px: 8, py: 6, pz: 0 });
-// createRing({ px: 7, py: 6, pz: 0 });
-// createRing({ px: 6, py: 6, pz: 0 });
+
+
 
 for (let i = 0; i < 5; i++) {
     for (let j = 0; j < 2; j++) {
@@ -928,7 +1001,7 @@ for (let i = 0; i < 5; i++) {
 
 for (let i = 0; i < 5; i++) {
     for (let j = 0; j < 5; j++) {
-        createRing({ px: 9 + (i * 4), py: 14, pz: 12 + (j * 4) });
+        createRing({ px: 1.5 + (i * 4), py: 14, pz: 12 + (j * 4) });
     }
 }
 
@@ -952,8 +1025,12 @@ camera.mode = "Orbit";
 camera.offset.x = 8; // 6.2 for the Title Screen
 camera.offset.y = 5;  // 0.3 for the Title Screen
 camera.orbitAngle = 0; // 0 for the Title Screen, PI for going behind Sonic in gameplay
+
+
 await camera.loadSpheremap('../COBBLE/assets/sonic/sky_105_2k.png');
 
+// Debug camera to offset it on the canvas
+ui.addScreen(camera);
 
 
 

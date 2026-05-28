@@ -14,3 +14,16 @@ body {
     height: 100vh;
     overflow: hidden;
 }
+
+#cobble-container {
+    position: absolute;
+    z-index: 10;
+}
+
+.ui-screen {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+}

@@ -40,6 +40,11 @@ export default class Cobble {
             this.ambientLight = new THREE.AmbientLight(0xffffff, 0.1);
             this.scene.add(this.ambientLight);
 
+            // The container for the renderer and canvas.
+            this.container = document.createElement("div");
+            this.container.id = "cobble-container";
+            document.body.appendChild(this.container);
+
             // The default renderer
             this.renderer = new THREE.WebGLRenderer();
             this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -47,7 +52,7 @@ export default class Cobble {
             this.frame = 0; // Frame counter for debugging and time-based events
 
             // Append the renderer to the body
-            document.body.appendChild(this.renderer.domElement);
+            this.container.appendChild(this.renderer.domElement);
         } else {
             console.warn("Three.js is not available. Cobble.js will not function properly.");
         }
@@ -125,6 +130,13 @@ export default class Cobble {
         this.findPlugin = (pluginName) => {
             // return true if the plugin exists, false if it doesn't
             return this.plugins[pluginName] ? this.plugins[pluginName] : false;
+        }
+
+        this.attachHTML = (element) => {
+            // A simple wrapper to attach HTML elements to the canvas container. This is used by UI plugins to add their screens to the page without the user having to manage the DOM themselves.
+            if (element instanceof HTMLElement) {
+                this.renderer.domElement.parentElement.appendChild(element);
+            }
         }
 
         requestAnimationFrame(this.update);
