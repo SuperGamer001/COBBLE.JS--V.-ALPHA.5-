@@ -48,6 +48,29 @@ export default class UIManager extends CobblePlugin {
         }
     }
 
+    addItem(screen, data = {type: "text", content: "*****", style: {color: "white", fontSize: "2"}}) {
+        // Creates a new HTML element for a UI item and adds it to the specified screen
+        const item = document.createElement("div");
+        item.classList.add("ui-item");
+        item.style.position = "absolute";
+        item.style.color = data.style.color || "white";
+        item.style.fontSize = (data.style.fontSize * 10) + "%" || "2%";
+        item.innerText = data.content || "*****";
+        screen.appendChild(item);
+        return item;
+    }
+
+    editItem(item, newData = {content: "*****", style: {color: "white", fontSize: "2"}}) {
+        // Edits an existing UI item with new data
+        if (newData.content) {
+            item.innerText = newData.content;
+        }
+        if (newData.style) {
+            item.style.color = newData.style.color || "white";
+            item.style.fontSize = (newData.style.fontSize * 10) + "%" || "2%";
+        }
+    }
+
     update = () => {
         for (const screen of this.screens) {
             if (screen.camera) {

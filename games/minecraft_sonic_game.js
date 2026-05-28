@@ -1030,7 +1030,16 @@ camera.orbitAngle = 0; // 0 for the Title Screen, PI for going behind Sonic in g
 await camera.loadSpheremap('../COBBLE/assets/sonic/sky_105_2k.png');
 
 // Debug camera to offset it on the canvas
-ui.addScreen(camera);
+const SonicScreen = ui.addScreen(camera);
+let ringCounter = ui.addItem(SonicScreen, {
+    type: "text",
+    content: "Rings: 0",
+    style: {
+        color: "#ffff00",
+        fontSize: "20",
+        fontFamily: "Arial, sans-serif",
+    }}
+);
 
 
 
@@ -1060,6 +1069,7 @@ addEventListener("cobbleCollision", (e) => {
                 const ringEntity = e.detail[key];
                 physics.removeBody(ringEntity);
                 entityManager.removeEntity(ringEntity);
+                ui.editItem(ringCounter, {content: `Rings: ${GAME_STATE.rings += 1}`});
                 // Optionally, you could also add some visual or sound effect here
                 break;
             }
