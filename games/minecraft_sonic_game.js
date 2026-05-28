@@ -42,13 +42,12 @@ const GAME_STATE = {
     rings: 0,
     score: 0,
     lives: 3,
-    timer: 0,
+    time: 0,
     paused: false,
+    running: false,
     levelName: "Green Hills",
     character: "Sonic",
     boost: 0,
-    health: 100,
-    maxHealth: 100,
     debug: false,
 };
 
@@ -978,40 +977,44 @@ function createRing({ px = 0, py = 0, pz = 0, color = 0xffff00 } = {}) {
     return ringCollision;
 }
 
-createGround({ py: -0.5, sz: 20, color: 0x228822 }); // main ground plane
-// createGround({sx: 500, sz: 500, py: -2, color: 0x888888 });
-
-createGround({ px: -10, py: 3, sy: 10, color: 0x228822 });
-createGround({ px:  10, py: 0, sy: 10, color: 0x228822 }); 
-
-createGround({ px: 10, py: -7, pz: 20, sx: 20, sy: 40, sz: 20, color: 0x228822 });
-createGround({ px: 17, py: -7, pz: -20, sx: 20, sy: 40, sz: 20, color: 0x228822 });
-createGround({ px: 17, py: -17, pz: 0, sx: 24, sy: 40, sz: 20, color: 0x228822 });
-createGround({ px: 10, py: -7, pz: 40, sx: 40, sy: 40, sz: 20, color: 0x228822 });
 
 
+const ZONES = {
+        SILVER_LAKE: function() {
+        createGround({ py: -0.5, sz: 20, color: 0x228822 }); // main ground plane
+        // createGround({sx: 500, sz: 500, py: -2, color: 0x888888 });
+
+        createGround({ px: -10, py: 3, sy: 10, color: 0x228822 });
+        createGround({ px:  10, py: 0, sy: 10, color: 0x228822 }); 
+
+        createGround({ px: 10, py: -7, pz: 20, sx: 20, sy: 40, sz: 20, color: 0x228822 });
+        createGround({ px: 17, py: -7, pz: -20, sx: 20, sy: 40, sz: 20, color: 0x228822 });
+        createGround({ px: 17, py: -17, pz: 0, sx: 24, sy: 40, sz: 20, color: 0x228822 });
+        createGround({ px: 10, py: -7, pz: 40, sx: 40, sy: 40, sz: 20, color: 0x228822 });
 
 
 
-for (let i = 0; i < 5; i++) {
-    for (let j = 0; j < 2; j++) {
-        createRing({ px: 14 - (i * 2), py: 6, pz: -3 + (j * 4) });
-    }
+
+
+        for (let i = 0; i < 5; i++) {
+            for (let j = 0; j < 2; j++) {
+                createRing({ px: 14 - (i * 2), py: 6, pz: -3 + (j * 4) });
+            }
+        }
+
+        for (let i = 0; i < 5; i++) {
+            for (let j = 0; j < 5; j++) {
+                createRing({ px: 1.5 + (i * 4), py: 14, pz: 12 + (j * 4) });
+            }
+        }
+
+
+
+        sonic.entity.position.set(0, 5, 0);
+        sonic.entity.rotation.set(0, 0, 0);
+        reloadGameState();
+    },
 }
-
-for (let i = 0; i < 5; i++) {
-    for (let j = 0; j < 5; j++) {
-        createRing({ px: 1.5 + (i * 4), py: 14, pz: 12 + (j * 4) });
-    }
-}
-
-
-
-
-// ============================================================
-//  Scene Population
-// ============================================================
-
 
 const sonic = createSonicCharacter(SONIC);
 sonic.entity.position.set(0, 5, 0);
@@ -1027,17 +1030,66 @@ camera.offset.y = 5;  // 0.3 for the Title Screen
 camera.orbitAngle = 0; // 0 for the Title Screen, PI for going behind Sonic in gameplay
 
 
+function reloadGameState() {
+    GAME_STATE.rings = 0;
+    GAME_STATE.time = 0;
+    GAME_STATE.paused = false;
+    GAME_STATE.running = true;
+    GAME_STATE.boost = 0;
+}
+
+
+
 await camera.loadSpheremap('../COBBLE/assets/sonic/sky_105_2k.png');
 
 // Debug camera to offset it on the canvas
 const SonicScreen = ui.addScreen(camera);
-let ringCounter = ui.addItem(SonicScreen, {
+    
+let ringCounter = ui.addText(SonicScreen, {
     type: "text",
     content: "Rings: 0",
     style: {
         color: "#ffff00",
         fontSize: "20",
         fontFamily: "Arial, sans-serif",
+        left: "1",
+        top: "1",
+    }}
+);
+
+let timer = ui.addText(SonicScreen, {
+    type: "text",
+    content: "Time: 0:00",
+    style: {
+        color: "#ffffff",
+        fontSize: "20",
+        fontFamily: "Arial, sans-serif",
+        left: "1",
+        top: "4",
+    }}
+);
+
+let score = ui.addText(SonicScreen, {
+    type: "text",
+    content: "Score: 0",
+    style: {
+        color: "#ffffff",
+        fontSize: "20",
+        fontFamily: "Arial, sans-serif",
+        left: "1",
+        top: "7",
+    }}
+);
+
+let lives = ui.addText(SonicScreen, {
+    type: "text",
+    content: "Lives: 3",
+    style: {
+        color: "#ffffff",
+        fontSize: "20",
+        fontFamily: "Arial, sans-serif",
+        left: "1",
+        top: "95",
     }}
 );
 
@@ -1069,7 +1121,7 @@ addEventListener("cobbleCollision", (e) => {
                 const ringEntity = e.detail[key];
                 physics.removeBody(ringEntity);
                 entityManager.removeEntity(ringEntity);
-                ui.editItem(ringCounter, {content: `Rings: ${GAME_STATE.rings += 1}`});
+                ui.editText(ringCounter, {content: `Rings: ${GAME_STATE.rings += 1}`});
                 // Optionally, you could also add some visual or sound effect here
                 break;
             }
@@ -1095,6 +1147,23 @@ cobble.nextFrame = () => {
     const now = performance.now() / 1000;
     const dt = Math.min(Math.max(now - lastFrameTime, 0), 0.05);
     lastFrameTime = now;
+
+    // Update timer if the game is running
+    if (GAME_STATE.running) {
+        GAME_STATE.time += dt;
+        let time = Math.floor(GAME_STATE.time);
+
+        let minutes = Math.floor(time / 60);
+        let seconds = time % 60;
+        
+        if (minutes >= 10) {
+            // Cap the timer display at 9:59 and kill Sonic if it goes over 10 minutes, just like in the original game
+            console.log("Time's up! Game over.");
+        }
+        else {
+            ui.editText(timer, {content: `Time: ${minutes}:${seconds.toString().padStart(2, "0")}`});
+        }
+    }    
 
     const vel    = sonic.physics?.state?.velocity ?? new THREE.Vector3();
     const hSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
@@ -1216,4 +1285,4 @@ cobble.nextFrame = () => {
 };
 
 
-console.log(cobble);
+ZONES.SILVER_LAKE();

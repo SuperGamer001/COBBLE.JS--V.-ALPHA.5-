@@ -48,19 +48,25 @@ export default class UIManager extends CobblePlugin {
         }
     }
 
-    addItem(screen, data = {type: "text", content: "*****", style: {color: "white", fontSize: "2"}}) {
+    addText(screen, data = {content: "*****", style: {color: "white", fontSize: "2", fontFamily: "Arial, sans-serif", left: "0", top: "0"}}) {
         // Creates a new HTML element for a UI item and adds it to the specified screen
         const item = document.createElement("div");
         item.classList.add("ui-item");
         item.style.position = "absolute";
+
+        // CSS properties for the item, with defaults if not provided
         item.style.color = data.style.color || "white";
         item.style.fontSize = (data.style.fontSize * 10) + "%" || "2%";
+        item.style.fontFamily = data.style.fontFamily || "Arial, sans-serif";
+        item.style.left = data.style.left + "%" || "0";
+        item.style.top = data.style.top + "%" || "0";
+
+
         item.innerText = data.content || "*****";
         screen.appendChild(item);
         return item;
     }
-
-    editItem(item, newData = {content: "*****", style: {color: "white", fontSize: "2"}}) {
+    editText(item, newData = {content: "*****", style: {color: "white", fontSize: "2"}}) {
         // Edits an existing UI item with new data
         if (newData.content) {
             item.innerText = newData.content;
@@ -69,6 +75,25 @@ export default class UIManager extends CobblePlugin {
             item.style.color = newData.style.color || "white";
             item.style.fontSize = (newData.style.fontSize * 10) + "%" || "2%";
         }
+    }
+
+    addVisual(screen, data = {type: "box", style: {left: "0", top: "0", width: "10", height: "10", color: "white", opacity: "1", borderRadius: "0"}}) {
+        // Creates a new HTML element for a UI item and adds it to the specified screen
+        const item = document.createElement("div");
+        item.classList.add("ui-item");
+        item.style.position = "absolute";
+
+        // CSS properties for the item, with defaults if not provided
+        item.style.left = data.style.left + "%" || "0";
+        item.style.top = data.style.top + "%" || "0";
+        item.style.width = data.style.width + "%" || "10%";
+        item.style.height = data.style.height + "%" || "10%";
+        item.style.backgroundColor = data.style.color || "white";
+        item.style.opacity = data.style.opacity || "1";
+        item.style.borderRadius = data.style.borderRadius || "0";
+
+        screen.appendChild(item);
+        return item;
     }
 
     update = () => {
