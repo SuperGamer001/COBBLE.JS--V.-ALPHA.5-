@@ -137,7 +137,7 @@ export default class PhysicsManager extends CobblePlugin {
      *                                   Omit to auto-derive from entity geometry + scale.
      * @returns {Entity} The same entity, now with entity.physics attached.
      */
-    addBody(entity, { type = "dynamic", shape = "box", size = null } = {}) {
+    addBody(entity, { type = "dynamic", shape = "box", size = null, ignore = [] } = {}) {
         entity.physics = {
             state: {
                 velocity:        new THREE.Vector3(),
@@ -146,7 +146,9 @@ export default class PhysicsManager extends CobblePlugin {
                 isColliding:     false,
                 isSleeping:      false,
             },
-            config: {},
+            config: {
+                ignore: ignore, // optional array of other entities to ignore collisions with
+            },
         };
 
         if (size === null) size = this._deriveSize(entity, shape);
@@ -155,6 +157,35 @@ export default class PhysicsManager extends CobblePlugin {
         this._bodies.push(body);
         if (this._debug) this._createDebugMesh(body);
         return entity;
+    }
+
+    /**
+     * Have entityA ignore collisions with entityB (one-way).
+     * @param {Entity} entityA
+     * @param {Entity} entityB
+     */
+    ignore(entityA, entityB) {
+        entityA.physics.config.ignore.push(entityB);
+    }
+
+    /**
+     * Have both given entities ignore each other (two-way).
+     * @param {Entity} entityA
+     * @param {Entity} entityB
+     */
+    bothIgnore(entityA, entityB) {
+        this.ignore(entityA, entityB);
+        this.ignore(entityB, entityA);
+    }
+
+    /**
+     * Stop ignoring collisions between entityA and entityB.
+     * @param {Entity} entityA
+     * @param {Entity} entityB
+     */
+    stopIgnoring(entityA, entityB) {
+        entityA.physics.config.ignore = entityA.physics.config.ignore.filter((e) => e !== entityB);
+        entityB.physics.config.ignore = entityB.physics.config.ignore.filter((e) => e !== entityA);
     }
 
     /**
@@ -278,6 +309,8 @@ export default class PhysicsManager extends CobblePlugin {
             const a = this._bodies[i];
             for (let j = i + 1; j < this._bodies.length; j++) {
                 const b = this._bodies[j];
+                const ignored = a.entity.physics.config.ignore.includes(b.entity) ||
+                    b.entity.physics.config.ignore.includes(a.entity);
 
                 // Static-static overlaps are usually irrelevant and can be costly
                 // to check in large scenes.
@@ -289,6 +322,9 @@ export default class PhysicsManager extends CobblePlugin {
                 // ── Emit collision event (once per unique pair per frame) ─────
                 this._emit("collision", { entities: [a.entity, b.entity] });
                 this._dispatchCollisionCustomEvent(a.entity, b.entity);
+
+                // If either body ignores the other, let them pass through.
+                if (ignored) continue;
 
                 // ── Skip resolution when either participant is a ghost ───────
                 if (a.type === "ghost" || b.type === "ghost") continue;

@@ -43,7 +43,7 @@ let PRESSED = {}; // Keep track of which keys were just pressed (resets every fr
 const RINGS = []; // Store ring entities for collision detection and management
 
 const GAME_STATE = {
-    rings: 0,
+    rings: 40,
     score: 0,
     lives: 3,
     time: 0,
@@ -476,7 +476,6 @@ function createSonicCharacter(config) {
     player._visual.material.transparent = true;
     player._visual.material.opacity = 0;
     player.setScale({ x: 0.5, y: 1.8, z: 0.5 });
-    console.log("Created player hitbox:", player);
 
     // Torso
     const torso = box();
@@ -715,6 +714,7 @@ function createSonicCharacter(config) {
         quills:        quillBones,
         eyes,
         eyelids,
+        mouth,
         leftShoulder:  leftArm.shoulder,
         rightShoulder: rightArm.shoulder,
         leftElbow:     leftArm.elbow,
@@ -737,6 +737,7 @@ function createSonicCharacter(config) {
         inBallForm: false,
         isJumping: false,
         isFalling: false,
+        isHurt: false,
     }
 
     return player;
@@ -841,6 +842,51 @@ function applyBallAnimation(character, speed) {
 
     // Spin Sonic in ball form based on walk phase
     b.torso.entity.rotation.x += (speed * 0.05) + 0.2;
+}
+
+function applyDamageAnimation(character, swing) {
+    // Animation (angled backwards, swinging arms and legs in panic)
+    const b = character.bones;
+
+    b.leftShoulder.entity.rotation.set(0, 0, 0);
+    b.rightShoulder.entity.rotation.set(0, 0, 0);
+    b.torso.entity.rotation.set(-0.3, 0, 0);
+    b.neck.entity.rotation.set(0.2, 0, 0);
+
+    b.leftShoulder.entity.rotation.set(swing -3, 0, -0.5);
+    b.rightShoulder.entity.rotation.set(-swing -3, 0, 0.5);
+    b.leftElbow.entity.rotation.set(0, 0, 0);
+    b.rightElbow.entity.rotation.set(0, 0, 0);
+    b.leftHip.entity.rotation.set((swing * 0.4) -1.5, 0, 0);
+    b.leftKnee.entity.rotation.set((swing * 0.2) + 0.8, 0, 0);
+    b.leftAnkle.entity.rotation.set(0, 0, 0);
+    b.rightHip.entity.rotation.set((-swing * 0.4) - 1.5, 0, 0);
+    b.rightKnee.entity.rotation.set((-swing * 0.2) + 0.8, 0, 0);
+    b.rightAnkle.entity.rotation.set(0, 0, 0);
+}
+
+function damage(character) {
+    if (GAME_STATE.rings > 0) {
+        // Give the character a damage animation and spitting out all collected rings in a random direction (capping at 32)
+        let lostRings = Math.min(GAME_STATE.rings ?? 0, 32);
+        GAME_STATE.rings = 0;
+        ui.editText(ringCounter, {content: `Rings: 0`});
+
+        for (let i = 0; i < lostRings; i++) {
+            const ring = createRing({ px: character.entity.position.x, py: character.entity.position.y, pz: character.entity.position.z, isLoose: true, lifespan: 30 });
+            physics.addBody(ring, { type: "dynamic", shape: "box", velocity: { x: 0, y: 0, z: 0 } });
+
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 5 + 2;
+
+            ring.physics.state.velocity.set(Math.cos(angle) * speed, Math.random() * 5 + 2, Math.sin(angle) * speed)
+        }
+
+        character.character.isHurt = true;
+        idleTime = 0;
+        character.physics.state.isGrounded = false;
+        character.physics.state.velocity.y = 8;
+    }
 }
 
 function blink(character, dt) {
@@ -968,17 +1014,26 @@ function createGround({
     // Add it to the physics world as a static body
     physics.addBody(ground, { type: "static", shape: "box" });
 
-    console.log("Created ground entity:", ground);
     return ground;
 }
 
-function createRing({ px = 0, py = 0, pz = 0, color = 0xffff00 } = {}) {
+function createRing({ px = 0, py = 0, pz = 0, color = 0xffff00, isLoose = false, lifespan = null } = {}) {
     const ringCollision = entityManager.addBox("ring"+Math.floor(Math.random() * 1000));
     ringCollision.setScale({ x: 0.8, y: 0.8, z: 0.4 });
     ringCollision.entity.position.set(px, py, pz);
+    ringCollision.collectDelay = 0; // custom property to prevent immediate recollection after dropping a ring
+    ringCollision.lifespan = lifespan; // custom property that removes the ring after a certain time if it's not collected (used for dropped rings that should disappear after a while)
+
     let clearMat = (color) => new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.0 });
     ringCollision.applyMaterial(clearMat(color));
-    physics.addBody(ringCollision, { type: "ghost", shape: "box" });
+    if (isLoose) {
+        physics.addBody(ringCollision, { type: "dynamic", shape: "box", mass: 0.5, velocity: { x: (Math.random() - 0.5) * 2, y: Math.random() * 2 + 1, z: (Math.random() - 0.5) * 2} });
+        physics.ignore(sonic, ringCollision);
+        ringCollision.collectDelay = 1; // prevent immediate recollection by Sonic
+    }
+    else {
+        physics.addBody(ringCollision, { type: "ghost", shape: "box" });
+    }
 
 
     let mat = (color) => new THREE.MeshStandardMaterial({ color });
@@ -1068,7 +1123,7 @@ camera.orbitAngle = 0; // 0 for the Title Screen, PI for going behind Sonic in g
 
 
 function reloadGameState() {
-    GAME_STATE.rings = 0;
+    // GAME_STATE.rings = 0;
     GAME_STATE.time = 0;
     GAME_STATE.paused = false;
     GAME_STATE.running = true;
@@ -1084,7 +1139,7 @@ const SonicScreen = ui.addScreen(camera);
     
 let ringCounter = ui.addText(SonicScreen, {
     type: "text",
-    content: "Rings: 0",
+    content: "Rings: " + GAME_STATE.rings,
     style: {
         color: "#ffff00",
         fontSize: "20",
@@ -1143,7 +1198,7 @@ addEventListener("keyup", (e) => {
     KEYS[e.key.toLowerCase()] = false;
 });
 addEventListener("cobbleCollision", (e) => {
-    // Check if Sonic is involved in the collision with anything with "box" in its name (our ground entities)
+    // Check if Sonic is involved in the collision with anything with "ring" in its name (our ground entities)
     const hasSonic = !!e.detail["Sonic"];
 
     const isRing = Object.keys(e.detail).some(key =>
@@ -1151,30 +1206,31 @@ addEventListener("cobbleCollision", (e) => {
     );
 
     if (hasSonic && isRing) {
-        console.log("Sonic collected a ring!");
         // Find the ring entity involved in the collision and remove it
         for (const key in e.detail) {
             if (key.toLowerCase().includes("ring")) {
                 const ringEntity = e.detail[key];
-                physics.removeBody(ringEntity);
-                entityManager.removeEntity(ringEntity);
-                ui.editText(ringCounter, {content: `Rings: ${GAME_STATE.rings += 1}`});
+                if (ringEntity.collectDelay == 0) {
+                    physics.removeBody(ringEntity);
+                    entityManager.removeEntity(ringEntity);
+                    ui.editText(ringCounter, {content: `Rings: ${GAME_STATE.rings += 1}`});
 
-                particles.createNumbered({
-                    position:     ringEntity.entity.position.clone(),
-                    count:        [18, 28],
-                    emissionRate: 1000,
-                    velocity:     { x: [-1, 1], y: [-0.5, 2], z: [-1, 1] },
-                    speed:        [2, 5],
-                    size:         [0.04, 0.11],
-                    color:        [0xffffaa, 0xffcc00],   // pale yellow to gold
-                    opacity:      [0.75, 1.0],
-                    lifetime:     [0.25, 0.6],
-                    fadeOut:      true,
-                });
+                    particles.createNumbered({
+                        position:     ringEntity.entity.position.clone(),
+                        count:        [18, 28],
+                        emissionRate: 1000,
+                        velocity:     { x: [-1, 1], y: [-0.5, 2], z: [-1, 1] },
+                        speed:        [2, 5],
+                        size:         [0.04, 0.11],
+                        color:        [0xffffaa, 0xffcc00],   // pale yellow to gold
+                        opacity:      [0.75, 1.0],
+                        lifetime:     [0.25, 0.6],
+                        fadeOut:      true,
+                    });
 
-                // Optionally, you could also add some visual or sound effect here
-                break;
+                    // Optionally, you could also add some visual or sound effect here
+                    break;
+                }
             }
         }
     }
@@ -1198,6 +1254,10 @@ cobble.nextFrame = () => {
     const now = performance.now() / 1000;
     const dt = Math.min(Math.max(now - lastFrameTime, 0), 0.05);
     lastFrameTime = now;
+
+    if (sonic.character.isHurt && sonic.physics?.state?.isGrounded) {
+        sonic.character.isHurt = false;
+    }
 
     // Update timer if the game is running
     if (GAME_STATE.running) {
@@ -1231,74 +1291,76 @@ cobble.nextFrame = () => {
         sonic.character.jumping = true;
     }
 
-    // ── Camera-relative input direction (same as before) ────────
-    const camYaw     = camera.orbitAngle ?? Math.PI;
-    const camForward = new THREE.Vector3(Math.sin(camYaw), 0,  Math.cos(camYaw));
-    const camRight   = new THREE.Vector3(Math.cos(camYaw), 0, -Math.sin(camYaw));
+    if (!sonic.character.isHurt) {
+        // ── Camera-relative input direction (same as before) ────────
+        const camYaw     = camera.orbitAngle ?? Math.PI;
+        const camForward = new THREE.Vector3(Math.sin(camYaw), 0,  Math.cos(camYaw));
+        const camRight   = new THREE.Vector3(Math.cos(camYaw), 0, -Math.sin(camYaw));
 
-    const inputDir = new THREE.Vector3();
-    if (KEYS["w"]) inputDir.addScaledVector(camForward, -1);
-    if (KEYS["s"]) inputDir.addScaledVector(camForward,  1);
-    if (KEYS["a"]) inputDir.addScaledVector(camRight,   -1);
-    if (KEYS["d"]) inputDir.addScaledVector(camRight,    1);
+        const inputDir = new THREE.Vector3();
+        if (KEYS["w"]) inputDir.addScaledVector(camForward, -1);
+        if (KEYS["s"]) inputDir.addScaledVector(camForward,  1);
+        if (KEYS["a"]) inputDir.addScaledVector(camRight,   -1);
+        if (KEYS["d"]) inputDir.addScaledVector(camRight,    1);
 
-    if (KEYS["q"]) camera.orbitAngle += 0.05;
-    if (KEYS["e"]) camera.orbitAngle -= 0.05;
+        if (KEYS["q"]) camera.orbitAngle += 0.05;
+        if (KEYS["e"]) camera.orbitAngle -= 0.05;
 
-    const hasInput   = inputDir.lengthSq() > 0;
-    if (hasInput) inputDir.normalize();
+        const hasInput   = inputDir.lengthSq() > 0;
+        if (hasInput) inputDir.normalize();
 
-    // ── Unified speed + direction steering ──────────────────────
-    const hVel        = new THREE.Vector3(vel.x, 0, vel.z);
-    let   speed       = hVel.length();                         // scalar, always >= 0
-    const currentDir  = speed > 0.01
-        ? hVel.clone().divideScalar(speed)                     // normalised movement direction
-        : (hasInput ? inputDir.clone() : camForward.clone());  // fallback when nearly stopped
+        // ── Unified speed + direction steering ──────────────────────
+        const hVel        = new THREE.Vector3(vel.x, 0, vel.z);
+        let   speed       = hVel.length();                         // scalar, always >= 0
+        const currentDir  = speed > 0.01
+            ? hVel.clone().divideScalar(speed)                     // normalised movement direction
+            : (hasInput ? inputDir.clone() : camForward.clone());  // fallback when nearly stopped
 
-    if (hasInput) {
-        // 1. Accelerate — scale force down near top speed
-        const accel = ACCEL_FORCE * (1 - Math.min(speed / TOP_SPEED, 1) * 0.6);
-        speed = Math.min(speed + accel, TOP_SPEED);
+        if (hasInput) {
+            // 1. Accelerate — scale force down near top speed
+            const accel = ACCEL_FORCE * (1 - Math.min(speed / TOP_SPEED, 1) * 0.6);
+            speed = Math.min(speed + accel, TOP_SPEED);
 
-        // 2. Steer — rotate current direction toward input direction each frame.
-        //    turnRate increases with speed so fast movement steers sharply.
-        const turnRate = 0.18 + (speed / TOP_SPEED) * 0.18;
-        const newDir   = currentDir.clone().lerp(inputDir, turnRate).normalize();
+            // 2. Steer — rotate current direction toward input direction each frame.
+            //    turnRate increases with speed so fast movement steers sharply.
+            const turnRate = 0.18 + (speed / TOP_SPEED) * 0.18;
+            const newDir   = currentDir.clone().lerp(inputDir, turnRate).normalize();
 
-        physics.setVelocity(sonic, new THREE.Vector3(
-            newDir.x * speed,
-            vel.y,
-            newDir.z * speed
-        ));
-    } else if (grounded) {
-        // 3. Decelerate smoothly when no input, preserve direction
-        speed = Math.max(speed - ACCEL_FORCE * 1.5, 0);
-        physics.setVelocity(sonic, new THREE.Vector3(
-            currentDir.x * speed,
-            vel.y,
-            currentDir.z * speed
-        ));
-    }
+            physics.setVelocity(sonic, new THREE.Vector3(
+                newDir.x * speed,
+                vel.y,
+                newDir.z * speed
+            ));
+        } else if (grounded) {
+            // 3. Decelerate smoothly when no input, preserve direction
+            speed = Math.max(speed - ACCEL_FORCE * 1.5, 0);
+            physics.setVelocity(sonic, new THREE.Vector3(
+                currentDir.x * speed,
+                vel.y,
+                currentDir.z * speed
+            ));
+        }
 
-    // ── Hard speed cap (safety net) ─────────────────────────────
-    const newHSpeed = Math.sqrt(
-        sonic.physics.state.velocity.x ** 2 + sonic.physics.state.velocity.z ** 2
-    );
-    if (newHSpeed > TOP_SPEED) {
-        const s = TOP_SPEED / newHSpeed;
-        const v = sonic.physics.state.velocity;
-        physics.setVelocity(sonic, new THREE.Vector3(v.x * s, v.y, v.z * s));
-    }
+        // ── Hard speed cap (safety net) ─────────────────────────────
+        const newHSpeed = Math.sqrt(
+            sonic.physics.state.velocity.x ** 2 + sonic.physics.state.velocity.z ** 2
+        );
+        if (newHSpeed > TOP_SPEED) {
+            const s = TOP_SPEED / newHSpeed;
+            const v = sonic.physics.state.velocity;
+            physics.setVelocity(sonic, new THREE.Vector3(v.x * s, v.y, v.z * s));
+        }
 
-    // ── Smooth rotation toward velocity direction ────────────
-    if (hSpeed > 0.1) {
-        const targetAngle = Math.atan2(vel.x, vel.z);
-        // Shortest-path lerp on the angle
-        let delta = targetAngle - sonic.entity.rotation.y;
-        // Wrap delta to [-PI, PI]
-        while (delta >  Math.PI) delta -= Math.PI * 2;
-        while (delta < -Math.PI) delta += Math.PI * 2;
-        sonic.entity.rotation.y += delta * ROT_LERP;
+        // ── Smooth rotation toward velocity direction ────────────
+        if (hSpeed > 0.1) {
+            const targetAngle = Math.atan2(vel.x, vel.z);
+            // Shortest-path lerp on the angle
+            let delta = targetAngle - sonic.entity.rotation.y;
+            // Wrap delta to [-PI, PI]
+            while (delta >  Math.PI) delta -= Math.PI * 2;
+            while (delta < -Math.PI) delta += Math.PI * 2;
+            sonic.entity.rotation.y += delta * ROT_LERP;
+        }
     }
 
     // ── Walk phase & animations ──────────────────────────────
@@ -1306,7 +1368,12 @@ cobble.nextFrame = () => {
     let breathing = Math.sin((cobble.frame / 120) * 8) * 0.05; // subtle up/down motion to make idle pose less static
     let quickBreathing = Math.sin((cobble.frame / 50) * 8) * 0.05; // faster breathing for high-speed running
 
-    if (sonic.character.jumping) {
+    if (sonic.character.isHurt) {
+        applyDamageAnimation(sonic, -Math.sin(quickBreathing) * 5);
+        sonic.particles.runSmoke.stop();
+        sonic.particles.jumpBlur.stop();
+    }
+    else if (sonic.character.jumping) {
         applyBallAnimation(sonic, Math.min(hSpeed, 15));
         sonic.particles.runSmoke.stop();
         sonic.particles.jumpBlur.start();
@@ -1342,15 +1409,34 @@ cobble.nextFrame = () => {
         }
     }
 
+
     blink(sonic, dt);
 
     for (let ring of RINGS) {
         // Rotate rings for visual flair
         ring.entity.rotation.y += dt * 2;
+        if (ring.collectDelay > 0) {
+            ring.collectDelay -= 0.1;
+        }
+        else if (ring.collectDelay < 0) {
+            ring.collectDelay = 0;
+        }
+
+        if (ring.lifespan != null) {
+            ring.lifespan -= 0.1;
+            if (ring.lifespan <= 0) {
+                physics.removeBody(ring);
+                entityManager.removeEntity(ring);
+            }
+        }
     }
 
     PRESSED = {};
 };
+
+setTimeout(() => {
+    damage(sonic);
+}, 5000);
 
 
 ZONES.SILVER_LAKE();
