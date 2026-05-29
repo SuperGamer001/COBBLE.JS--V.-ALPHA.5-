@@ -1,4 +1,4 @@
-// Platforming.js — A custom script using the COBBLE.js engine.
+// minecraft_sonic_game.js — A custom script using the COBBLE.js engine.
 
 import * as THREE from "three";
 import Cobble from "../COBBLE/main.js";
@@ -6,6 +6,7 @@ import EntityManager from "../COBBLE/plugins/entityManager.js";
 import Camera from "../COBBLE/plugins/camera.js";
 import PhysicsManager from "../COBBLE/plugins/physicsManager.js";
 import UIManager from "../COBBLE/plugins/UI.js";
+import Particles from "../COBBLE/plugins/particleManager.js";
 
 
 // ============================================================
@@ -22,6 +23,9 @@ cobble.addPlugin(physics);
 
 const ui = new UIManager();
 cobble.addPlugin(ui);
+
+const particles = new Particles();
+cobble.addPlugin(particles);
 
 // Change global gravity for everyone
 physics.defaults.gravity.set(0, -20, 0);
@@ -483,6 +487,34 @@ function createSonicCharacter(config) {
 
     config.stomach?.(torso);
 
+    // Running Particle Emitter
+    const runSmoke = particles.createToggled({
+        attachTo:     player.entity,
+        position:     new THREE.Vector3(0, -0.85, -0.2), // offset down to feet level
+        emissionRate: 90,
+        velocity:     { x: [-0.3, 0.3], y: [0.5, 1.5], z: [-0.3, 0.3] },
+        speed:        [0.5, 1.5],
+        size:         [0.18, 0.55],
+        color:        [0xdddddd, 0x555555],            // light grey to dark grey
+        opacity:      [0.5, 0.95],
+        lifetime:     [0.25, 0.55],
+        fadeOut:      true,
+    });
+    runSmoke.stop(); // always start stopped — the game loop drives it
+
+    const jumpBlur = particles.createToggled({
+        attachTo:     player.entity,
+        emissionRate: 90,
+        velocity:     { x: [-0.3, 0.3], y: [0.5, 1.5], z: [-0.3, 0.3] },
+        speed:        [0.5, 1.5],
+        size:         1,
+        color:        config.colors.body,            // darker shade of body color
+        opacity:      [0.5, 0.95],
+        lifetime:     0.3,
+        fadeOut:      true,
+    });
+    jumpBlur.stop(); // always start stopped — the game loop drives it
+
     // Neck + Head
     const neck = box();
     neck.setScale({ x: 0.1, y: 0.1, z: 0.1 });
@@ -693,6 +725,11 @@ function createSonicCharacter(config) {
         rightKnee:     rightLeg.knee,
         leftAnkle:     leftLeg.ankle,
         rightAnkle:    rightLeg.ankle,
+    };
+
+    player.particles = {
+        runSmoke,
+        jumpBlur,
     };
 
     player.character = {
@@ -1122,6 +1159,20 @@ addEventListener("cobbleCollision", (e) => {
                 physics.removeBody(ringEntity);
                 entityManager.removeEntity(ringEntity);
                 ui.editText(ringCounter, {content: `Rings: ${GAME_STATE.rings += 1}`});
+
+                particles.createNumbered({
+                    position:     ringEntity.entity.position.clone(),
+                    count:        [18, 28],
+                    emissionRate: 1000,
+                    velocity:     { x: [-1, 1], y: [-0.5, 2], z: [-1, 1] },
+                    speed:        [2, 5],
+                    size:         [0.04, 0.11],
+                    color:        [0xffffaa, 0xffcc00],   // pale yellow to gold
+                    opacity:      [0.75, 1.0],
+                    lifetime:     [0.25, 0.6],
+                    fadeOut:      true,
+                });
+
                 // Optionally, you could also add some visual or sound effect here
                 break;
             }
@@ -1257,15 +1308,32 @@ cobble.nextFrame = () => {
 
     if (sonic.character.jumping) {
         applyBallAnimation(sonic, Math.min(hSpeed, 15));
+        sonic.particles.runSmoke.stop();
+        sonic.particles.jumpBlur.start();
         idleTime = 0;
     } else if (hSpeed > 15) {
+
         applyRunAnimation(sonic, -Math.sin(walkPhase) * 0.5, Math.cos(walkPhase) * 0.5);
         idleTime = 0;
+        sonic.particles.jumpBlur.stop();
+
+        // Scale up density with speed — faster = thicker smoke trail
+        sonic.particles.runSmoke.emissionRate = 60 + (hSpeed - 15) * 4;
+        if(sonic.physics.state.isGrounded) {
+            sonic.particles.runSmoke.start();
+        } else {
+            sonic.particles.runSmoke.stop();
+        }
+
     } else if (hSpeed > 0.05) {
         applyWalkAnimation(sonic, -Math.sin(walkPhase) * 0.5, Math.cos(walkPhase) * 0.5);
+        sonic.particles.runSmoke.stop();
+        sonic.particles.jumpBlur.stop();
         idleTime = 0;
     } else {
         applyIdleAnimation(sonic, breathing);
+        sonic.particles.runSmoke.stop();
+        sonic.particles.jumpBlur.stop();
         // After a short delay of idleness, add a tapping foot animation to make it more lively
         // Round dt to the nearest hundredth to prevent jitter from very small frame time variations
         idleTime += dt;
