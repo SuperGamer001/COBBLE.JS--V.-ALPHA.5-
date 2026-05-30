@@ -30,7 +30,8 @@ On the bottom right corner, if you installed the Live Server Extention, you shou
 
 
 ### Controls:
-- Walk & Run: WASD
-- Rotate Camera: Q and E
+- Walk & Run: W
+- Rotate Camera: A and D
+- Hit the breaks: S
 - Jump: Space
 - Tap Foot: Do Absolutly Nothing
