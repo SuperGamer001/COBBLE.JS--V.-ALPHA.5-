@@ -867,7 +867,7 @@ function applyDamageAnimation(character, swing) {
 }
 
 function damage(character) {
-    if (GAME_STATE.rings > 0 && !character.character.isHurt) {
+    // if (GAME_STATE.rings > 0 && !character.character.isHurt) {
         // Give the character a damage animation and spitting out all collected rings in a random direction (capping at 32)
         let lostRings = Math.min(GAME_STATE.rings ?? 0, 32);
         GAME_STATE.rings = 0;
@@ -887,7 +887,7 @@ function damage(character) {
         idleTime = 0;
         character.physics.state.isGrounded = false;
         character.physics.state.velocity.y = 8;
-    }
+    // }
 }
 
 function blink(character, dt) {
@@ -1114,10 +1114,21 @@ const ZONES = {
         }
 
         createBadnik({ px: 8, py: 6, pz: 0 });
+        createBadnik({ px: 12, py: 10, pz: -15 });
+        createBadnik({ px: 15, py: 10, pz: 20 });
+        createBadnik({ px: 15, py: 11, pz: 20 });
+        createBadnik({ px: 5, py: 10, pz: 10 });
+
+
+        createBadnik({ px: 10, py: 15, pz: 30 });
+        createBadnik({ px: -2, py: 15, pz: 42 });
+        createBadnik({ px: 5, py: 15, pz: 20 });
+        createBadnik({ px: 25, py: 15, pz: 40 });
 
 
         sonic.entity.position.set(0, 1, 0);
         sonic.entity.rotation.set(0, 0, 0);
+
         reloadGameState();
     },
 }
@@ -1132,7 +1143,7 @@ camera.rotation.set(-0.04834938665190285, 0, 0);
 camera.mode = "Orbit";
 camera.offset.x = 8; // 6.2 for the Title Screen
 camera.offset.y = 5;  // 0.3 for the Title Screen
-camera.orbitAngle = 0; // 0 for the Title Screen, PI for going behind Sonic in gameplay
+camera.orbitAngle = Math.PI; // 0 for the Title Screen, PI for going behind Sonic in gameplay
 
 
 function reloadGameState() {
@@ -1344,13 +1355,13 @@ cobble.nextFrame = () => {
         const camRight   = new THREE.Vector3(Math.cos(camYaw), 0, -Math.sin(camYaw));
 
         const inputDir = new THREE.Vector3();
-        if (KEYS["w"]) inputDir.addScaledVector(camForward, -1);
-        if (KEYS["s"]) inputDir.addScaledVector(camForward,  1);
-        if (KEYS["a"]) inputDir.addScaledVector(camRight,   -1);
-        if (KEYS["d"]) inputDir.addScaledVector(camRight,    1);
+        if (KEYS["w"]) inputDir.addScaledVector(camForward, -1); // Run forward
+        const isBraking = !!KEYS["s"]; // Brake only; never drive toward the camera
+        
+        if (KEYS["a"]) camera.orbitAngle += dt * 4; // Rotate camera left
+        if (KEYS["d"]) camera.orbitAngle -= dt * 4; // Rotate camera right
 
-        if (KEYS["q"]) camera.orbitAngle += 0.05;
-        if (KEYS["e"]) camera.orbitAngle -= 0.05;
+
 
         const hasInput   = inputDir.lengthSq() > 0;
         if (hasInput) inputDir.normalize();
@@ -1362,7 +1373,7 @@ cobble.nextFrame = () => {
             ? hVel.clone().divideScalar(speed)                     // normalised movement direction
             : (hasInput ? inputDir.clone() : camForward.clone());  // fallback when nearly stopped
 
-        if (hasInput) {
+        if (hasInput && !isBraking) {
             // 1. Accelerate — scale force down near top speed
             const accel = ACCEL_FORCE * (1 - Math.min(speed / TOP_SPEED, 1) * 0.6);
             speed = Math.min(speed + accel, TOP_SPEED);
@@ -1379,7 +1390,9 @@ cobble.nextFrame = () => {
             ));
         } else if (grounded) {
             // 3. Decelerate smoothly when no input, preserve direction
-            speed = Math.max(speed - ACCEL_FORCE * 1.5, 0);
+            const decel = isBraking ? ACCEL_FORCE * 4 : ACCEL_FORCE * 1.5;
+            speed = Math.max(speed - decel, 0);
+            if (speed < STOP_THRESH) speed = 0;
             physics.setVelocity(sonic, new THREE.Vector3(
                 currentDir.x * speed,
                 vel.y,
