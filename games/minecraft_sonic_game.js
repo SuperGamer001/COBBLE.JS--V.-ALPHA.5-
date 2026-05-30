@@ -41,9 +41,10 @@ physics.defaults.friction = 0; // Allow sliding
 const KEYS = {}; // Keep track of which keys are currently held down
 let PRESSED = {}; // Keep track of which keys were just pressed (resets every frame)
 const RINGS = []; // Store ring entities for collision detection and management
+const BADNIKS = []; // Store badnik entities for collision detection and management
 
 const GAME_STATE = {
-    rings: 40,
+    rings: 0,
     score: 0,
     lives: 3,
     time: 0,
@@ -866,7 +867,7 @@ function applyDamageAnimation(character, swing) {
 }
 
 function damage(character) {
-    if (GAME_STATE.rings > 0) {
+    if (GAME_STATE.rings > 0 && !character.character.isHurt) {
         // Give the character a damage animation and spitting out all collected rings in a random direction (capping at 32)
         let lostRings = Math.min(GAME_STATE.rings ?? 0, 32);
         GAME_STATE.rings = 0;
@@ -1069,6 +1070,18 @@ function createRing({ px = 0, py = 0, pz = 0, color = 0xffff00, isLoose = false,
     return ringCollision;
 }
 
+function createBadnik({ px = 0, py = 0, pz = 0 } = {}) {
+    const badnik = entityManager.addBox("badnik"+Math.floor(Math.random() * 1000));
+    badnik.setScale({ x: -1, y: 1, z: 1 });
+    badnik.applyMaterial(new THREE.MeshStandardMaterial({ color: 0xff0000 }));
+    badnik.entity.position.set(px, py, pz);
+    physics.addBody(badnik, { type: "dynamic", shape: "box", mass: 1 });
+    BADNIKS.push(badnik);
+    console.log(badnik.physics)
+    
+    return badnik;
+}
+
 
 
 const ZONES = {
@@ -1100,16 +1113,16 @@ const ZONES = {
             }
         }
 
+        createBadnik({ px: 8, py: 6, pz: 0 });
 
 
-        sonic.entity.position.set(0, 5, 0);
+        sonic.entity.position.set(0, 1, 0);
         sonic.entity.rotation.set(0, 0, 0);
         reloadGameState();
     },
 }
 
 const sonic = createSonicCharacter(SONIC);
-sonic.entity.position.set(0, 5, 0);
 physics.addBody(sonic, { type: "dynamic", shape: "box", mass: 1});
 
 const camera = new Camera(null, sonic.entity);
@@ -1200,9 +1213,11 @@ addEventListener("keyup", (e) => {
 addEventListener("cobbleCollision", (e) => {
     // Check if Sonic is involved in the collision with anything with "ring" in its name (our ground entities)
     const hasSonic = !!e.detail["Sonic"];
-
     const isRing = Object.keys(e.detail).some(key =>
         key.toLowerCase().includes("ring")
+    );
+    const isBadnik = Object.keys(e.detail).some(key =>
+        key.toLowerCase().includes("badnik")
     );
 
     if (hasSonic && isRing) {
@@ -1214,6 +1229,7 @@ addEventListener("cobbleCollision", (e) => {
                     physics.removeBody(ringEntity);
                     entityManager.removeEntity(ringEntity);
                     ui.editText(ringCounter, {content: `Rings: ${GAME_STATE.rings += 1}`});
+                    RINGS.splice(RINGS.indexOf(ringEntity), 1);
 
                     particles.createNumbered({
                         position:     ringEntity.entity.position.clone(),
@@ -1232,6 +1248,36 @@ addEventListener("cobbleCollision", (e) => {
                     break;
                 }
             }
+        }
+    }
+    if (hasSonic && isBadnik) {
+        if (sonic.character.jumping) {
+            // If Sonic is currently jumping, destroy the badnik instead of taking damage
+            for (const key in e.detail) {
+                if (key.toLowerCase().includes("badnik")) {
+                    const badnikEntity = e.detail[key];
+                    physics.removeBody(badnikEntity);
+                    entityManager.removeEntity(badnikEntity);
+                    sonic.character.jumping = true;
+                    sonic.physics.state.velocity.y = 10; // bounce up with a stronger jump
+                    // Smoke effect for defeating the badnik
+                    particles.createNumbered({
+                        position:     badnikEntity.entity.position.clone(),
+                        velocity:     { x: [-1, 1], y: [-0.5, 2], z: [-1, 1] },
+                        speed:        [2, 5],
+                        size:         [0.1, 0.3],
+                        emissionRate: 1000,
+                        color:        [0x555555, 0xaaaaaa],   // dark gray to light gray
+                        opacity:      [0.5, 0.8],
+                        lifetime:     [0.5, 1.0],
+                        fadeOut:      true,
+                    });
+                    break;
+                }
+            }
+        }
+        else {
+            damage(sonic);
         }
     }
 })
@@ -1434,9 +1480,8 @@ cobble.nextFrame = () => {
     PRESSED = {};
 };
 
-setTimeout(() => {
-    damage(sonic);
-}, 5000);
-
+// setTimeout(() => {
+//     damage(sonic);
+// }, 1000);
 
 ZONES.SILVER_LAKE();

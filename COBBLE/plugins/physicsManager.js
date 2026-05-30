@@ -301,6 +301,7 @@ export default class PhysicsManager extends CobblePlugin {
         // This ensures collision events fire for:
         //   - dynamic vs static
         //   - dynamic vs ghost
+        //   - dynamic vs dynamic
         //   - ghost vs ghost
         //   - static vs ghost
         // (Resolution is still only applied when at least one body is dynamic,
@@ -309,8 +310,7 @@ export default class PhysicsManager extends CobblePlugin {
             const a = this._bodies[i];
             for (let j = i + 1; j < this._bodies.length; j++) {
                 const b = this._bodies[j];
-                const ignored = a.entity.physics.config.ignore.includes(b.entity) ||
-                    b.entity.physics.config.ignore.includes(a.entity);
+                const ignored = a.entity.physics.config.ignore.includes(b.entity)
 
                 // Static-static overlaps are usually irrelevant and can be costly
                 // to check in large scenes.
@@ -501,20 +501,21 @@ export default class PhysicsManager extends CobblePlugin {
 
     _deriveSize(entity, shape) {
         const scale = entity._visual ? entity._visual.scale.clone() : new THREE.Vector3(1, 1, 1);
+        const absScale = new THREE.Vector3(Math.abs(scale.x), Math.abs(scale.y), Math.abs(scale.z));
         if (entity.geometry) {
             entity.geometry.computeBoundingBox();
             entity.geometry.computeBoundingSphere();
             if (shape === "sphere") {
                 return (entity.geometry.boundingSphere?.radius ?? 0.5) *
-                    Math.max(scale.x, scale.y, scale.z);
+                    Math.max(absScale.x, absScale.y, absScale.z);
             }
             const box = entity.geometry.boundingBox;
             if (box) {
                 const half = new THREE.Vector3().subVectors(box.max, box.min).multiplyScalar(0.5);
-                return new THREE.Vector3(half.x * scale.x, half.y * scale.y, half.z * scale.z);
+                return new THREE.Vector3(half.x * absScale.x, half.y * absScale.y, half.z * absScale.z);
             }
         }
-        return shape === "sphere" ? 0.5 : new THREE.Vector3(0.5, 0.5, 0.5);
+        return shape === "sphere" ? 0.5 * Math.max(absScale.x, absScale.y, absScale.z) : new THREE.Vector3(0.5, 0.5, 0.5);
     }
 
     _updateGroundFlags(body, normal) {
